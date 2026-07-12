@@ -1,6 +1,9 @@
 "use client";
 
+import { useState } from "react";
 import { tagColor } from "@/lib/tags";
+import { setFavourite } from "@/lib/restaurants";
+import { useRestaurantUI } from "./AppShell";
 import type { Restaurant } from "@/lib/types";
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -30,10 +33,41 @@ export function RestaurantDetailView({
   onEdit: () => void;
 }) {
   const directionsUrl = `https://www.google.com/maps/dir/?api=1&destination=${restaurant.lat},${restaurant.lng}`;
+  const { refresh } = useRestaurantUI();
+  const [favourite, setFavouriteState] = useState(restaurant.is_favourite);
+  const [toggling, setToggling] = useState(false);
+
+  async function handleToggleFavourite() {
+    const next = !favourite;
+    setFavouriteState(next);
+    setToggling(true);
+    try {
+      await setFavourite(restaurant.id, next);
+      refresh();
+    } catch (err) {
+      setFavouriteState(!next);
+      console.error(err);
+    } finally {
+      setToggling(false);
+    }
+  }
 
   return (
     <div className="flex flex-col gap-3 pr-6">
       <h2 className="text-lg font-semibold">{restaurant.name}</h2>
+
+      <button
+        type="button"
+        onClick={handleToggleFavourite}
+        disabled={toggling}
+        className={`w-fit rounded-full border px-3 py-1.5 text-xs font-medium disabled:opacity-50 ${
+          favourite
+            ? "border-[#bd5a1f] bg-[#bd5a1f] text-white"
+            : "border-black/15 text-black/70 dark:border-white/15 dark:text-white/70"
+        }`}
+      >
+        {favourite ? "★ Favourite" : "☆ Add to favourites"}
+      </button>
 
       <div className="flex flex-wrap gap-1.5">
         {restaurant.tags.map((t) => (

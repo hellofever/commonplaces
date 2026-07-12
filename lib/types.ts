@@ -19,6 +19,7 @@ export interface Restaurant {
   google_place_id: string | null;
   notes: string | null;
   photo_url: string | null;
+  is_favourite: boolean;
   created_at: string;
   updated_at: string;
 

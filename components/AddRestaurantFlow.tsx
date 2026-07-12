@@ -34,10 +34,10 @@ function toFormInitial(restaurant: Restaurant): Partial<RestaurantInput> {
 
 export function AddRestaurantFlow({
   editing,
-  onDone,
+  onSaved,
 }: {
   editing?: Restaurant;
-  onDone: () => void;
+  onSaved: (restaurant: Restaurant) => void;
 }) {
   const [step, setStep] = useState<"search" | "results" | "form">(editing ? "form" : "search");
   const [query, setQuery] = useState("");
@@ -114,12 +114,10 @@ export function AddRestaurantFlow({
   }
 
   async function handleSave(values: RestaurantInput) {
-    if (editing) {
-      await updateRestaurant(editing.id, values);
-    } else {
-      await insertRestaurant(values);
-    }
-    onDone();
+    const saved = editing
+      ? await updateRestaurant(editing.id, values)
+      : await insertRestaurant(values);
+    onSaved(saved);
   }
 
   if (duplicate) {

@@ -85,6 +85,11 @@ export async function updateRestaurant(id: string, input: RestaurantInput): Prom
   return fetchRestaurantById(id);
 }
 
+export async function setFavourite(id: string, value: boolean): Promise<void> {
+  const { error } = await supabase.from("restaurants").update({ is_favourite: value }).eq("id", id);
+  if (error) throw error;
+}
+
 export async function findByPlaceId(placeId: string): Promise<Restaurant | null> {
   const { data, error } = await supabase
     .from("restaurants")

@@ -19,8 +19,10 @@ type SheetState =
 interface RestaurantUIContextValue {
   openDetail: (restaurant: Restaurant) => void;
   openEdit: (restaurant: Restaurant) => void;
+  openAdd: () => void;
   // bump after any create/update so Map/List/Sheet pages know to refetch
   refreshToken: number;
+  refresh: () => void;
 }
 
 const RestaurantUIContext = createContext<RestaurantUIContextValue | null>(null);
@@ -56,8 +58,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     return <LoginForm />;
   }
 
-  function handleDone() {
-    setSheet(null);
+  function handleSaved(restaurant: Restaurant) {
+    setSheet({ kind: "detail", restaurant });
     setRefreshToken((n) => n + 1);
   }
 
@@ -66,7 +68,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       value={{
         openDetail: (r) => setSheet({ kind: "detail", restaurant: r }),
         openEdit: (r) => setSheet({ kind: "edit", restaurant: r }),
+        openAdd: () => setSheet({ kind: "add" }),
         refreshToken,
+        refresh: () => setRefreshToken((n) => n + 1),
       }}
     >
       <Header onAdd={() => setSheet({ kind: "add" })} />
@@ -75,13 +79,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <BottomSheet open={sheet !== null} onClose={() => setSheet(null)}>
         {sheet?.kind === "detail" && (
           <RestaurantDetailView
+            key={sheet.restaurant.id}
             restaurant={sheet.restaurant}
             onEdit={() => setSheet({ kind: "edit", restaurant: sheet.restaurant })}
           />
         )}
-        {sheet?.kind === "add" && <AddRestaurantFlow onDone={handleDone} />}
+        {sheet?.kind === "add" && <AddRestaurantFlow onSaved={handleSaved} />}
         {sheet?.kind === "edit" && (
-          <AddRestaurantFlow editing={sheet.restaurant} onDone={handleDone} />
+          <AddRestaurantFlow editing={sheet.restaurant} onSaved={handleSaved} />
         )}
       </BottomSheet>
     </RestaurantUIContext.Provider>

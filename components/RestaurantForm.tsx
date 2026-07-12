@@ -19,7 +19,9 @@ export function RestaurantForm({
   const [name, setName] = useState(initial.name ?? "");
   const [tagIds, setTagIds] = useState<string[]>(initial.tagIds ?? []);
   const [areaIds, setAreaIds] = useState<string[]>(initial.areaIds ?? []);
-  const [cityIds, setCityIds] = useState<string[]>(initial.cityId ? [initial.cityId] : []);
+  // City picker is hidden for now (see below) -- carry the existing value through
+  // untouched rather than dropping it on save.
+  const cityIds = initial.cityId ? [initial.cityId] : [];
   const [primaryTagId, setPrimaryTagId] = useState<string | null>(initial.primary_tag_id ?? null);
   const [address, setAddress] = useState(initial.address ?? "");
   const [lat, setLat] = useState<number | "">(initial.lat ?? "");
@@ -29,6 +31,7 @@ export function RestaurantForm({
   const [priceLevel, setPriceLevel] = useState<number | null>(initial.price_level ?? null);
   const [notes, setNotes] = useState(initial.notes ?? "");
   const [tagOptions, setTagOptions] = useState<Tag[]>([]);
+  const [editingLocation, setEditingLocation] = useState(initial.lat === undefined);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -126,7 +129,8 @@ export function RestaurantForm({
       )}
 
       <TagPicker kind="area" label="Area" multiple selectedIds={areaIds} onChange={setAreaIds} />
-      <TagPicker kind="city" label="City" multiple={false} selectedIds={cityIds} onChange={setCityIds} />
+      {/* City is hidden for now -- cityIds still round-trips through save unchanged
+          (see handleSubmit) so existing data isn't lost, it's just not editable here. */}
 
       <label className="flex flex-col gap-1 text-sm">
         Address
@@ -138,29 +142,45 @@ export function RestaurantForm({
         />
       </label>
 
-      <div className="grid grid-cols-2 gap-3">
-        <label className="flex flex-col gap-1 text-sm">
-          Latitude
-          <input
-            required
-            type="number"
-            step="any"
-            value={lat}
-            onChange={(e) => setLat(e.target.value === "" ? "" : parseFloat(e.target.value))}
-            className={inputClass}
-          />
-        </label>
-        <label className="flex flex-col gap-1 text-sm">
-          Longitude
-          <input
-            required
-            type="number"
-            step="any"
-            value={lng}
-            onChange={(e) => setLng(e.target.value === "" ? "" : parseFloat(e.target.value))}
-            className={inputClass}
-          />
-        </label>
+      <div className="flex flex-col gap-1 text-sm">
+        <div className="flex items-center justify-between">
+          <span>Location</span>
+          {!editingLocation && (
+            <button
+              type="button"
+              onClick={() => setEditingLocation(true)}
+              className="text-xs text-black/60 underline dark:text-white/60"
+            >
+              Edit
+            </button>
+          )}
+        </div>
+        {editingLocation ? (
+          <div className="grid grid-cols-2 gap-3">
+            <input
+              required
+              type="number"
+              step="any"
+              placeholder="Latitude"
+              value={lat}
+              onChange={(e) => setLat(e.target.value === "" ? "" : parseFloat(e.target.value))}
+              className={inputClass}
+            />
+            <input
+              required
+              type="number"
+              step="any"
+              placeholder="Longitude"
+              value={lng}
+              onChange={(e) => setLng(e.target.value === "" ? "" : parseFloat(e.target.value))}
+              className={inputClass}
+            />
+          </div>
+        ) : (
+          <p className="text-black/70 dark:text-white/70">
+            {lat}, {lng}
+          </p>
+        )}
       </div>
 
       <label className="flex flex-col gap-1 text-sm">
