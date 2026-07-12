@@ -1,17 +1,18 @@
 @AGENTS.md
 
-# Our Places — decisions log
+# Our Places
 
-A shared map of favourite restaurants for a small group (<5 people). Tap a pin for details,
-browse as a list, or maintain everything in a spreadsheet-style grid. Add a restaurant by
-searching Google Places (autofills address/phone/hours) or entering it manually.
+A shared map of favourite restaurants for a small group (<5 people). Tap a pin for
+details, browse as a list, or maintain everything in a spreadsheet-style grid. Add a
+restaurant by searching Google Places (autofills address/phone/hours) or entering it
+manually.
 
-## Stack
+## Tech Stack
 
 - **Next.js 16 (App Router) + TypeScript + Tailwind v4**, no `src/` dir. Deployed to Vercel.
-- **Supabase** (Postgres + Auth + RLS) is the database. It is the only write path — no
-  Google Sheets integration. A spreadsheet-*feel* is provided by the in-app Sheet view
-  instead (see below), which stays schema-safe because it's still backed by RLS.
+- **Supabase** (Postgres + Auth + RLS) — the only write path, no Google Sheets
+  integration. A spreadsheet-*feel* is provided by the in-app Sheet view instead (see
+  UI structure, below), which stays schema-safe because it's still backed by RLS.
 - **Google Maps JavaScript API** (`@vis.gl/react-google-maps`) renders the map — chosen
   over MapLibre/free tiles because it shares one API family with Places search, at
   negligible cost for <5 users (see Cost, below).
@@ -21,13 +22,25 @@ searching Google Places (autofills address/phone/hours) or entering it manually.
 - **Auth:** Supabase email/password, tied to the owner's personal email. No magic link,
   no separate login route — `AppShell` shows `LoginForm` inline when there's no session.
 
+## Project Structure
+
+- `app/` — routes: `page.tsx` (Map), `list/`, `sheet/`, `api/places/{search,details}/`
+  (server-only Places proxy). No `src/` dir.
+- `components/` — `AppShell` (auth gate + shared `RestaurantUIContext`), `MapView`,
+  `AddRestaurantFlow` + `RestaurantForm` + `TagPicker` (shared add/edit flow),
+  `RestaurantDetailView`, `LoginForm`, `BottomSheet`, `Header`.
+- `lib/` — `supabase.ts` (client), `restaurants.ts` (fetch/insert/update, tag-join
+  normalization), `tags.ts` (tags/area/city taxonomy + palette), `types.ts`.
+- `supabase/migrations/` — one file so far, `0001_init.sql`. This *is* the schema source
+  of truth — see "What to avoid" for the workflow around it.
+
 ## Data model
 
 `supabase/migrations/0001_init.sql`, RLS-gated to `auth.role() = 'authenticated'`
 throughout (no per-row ownership; it's a shared list, not multi-tenant).
 
-**Superseded the original single `category` enum** with a unified `tags` table
-(`kind`: `'tag' | 'area' | 'city'`) plus a `restaurant_tags` many-to-many join:
+A unified `tags` table (`kind`: `'tag' | 'area' | 'city'`) plus a `restaurant_tags`
+many-to-many join, superseding an earlier single `category` enum:
 
 - **Tags** (Bakery, Cafe, Casual Eats, Restaurants, Dessert — seeded starting set) and
   **Area** (Inner West, City, Inner City, East, West, South, North, Regional — seeded) are
@@ -39,21 +52,15 @@ throughout (no per-row ownership; it's a shared list, not multi-tenant).
 - `restaurants.primary_tag_id` is a separate FK (not part of the join) that drives the map
   pin color — you designate one of a restaurant's tags as primary when saving. Tags get
   their color auto-assigned from a rotating palette when created.
-- `google_place_id` (unique on `restaurants`) still powers duplicate detection when adding
-  a restaurant that's already on the list.
-
-App code is reworked to match (`lib/tags.ts` replaces the old `lib/categories.ts`;
-`RestaurantForm` now has a `TagPicker` for tags/area/city plus a primary-tag chooser).
-`npm run build` passes. Not yet tested end-to-end against live data — that happens once
-the migration is run and Google Maps/Places keys are in.
+- `google_place_id` (unique on `restaurants`) powers duplicate detection when adding a
+  restaurant that's already on the list.
 
 ## Why Supabase, not Google Sheets
 
 Sheets has no schema enforcement, no real auth model (anyone with the edit link can
 change anything), no geospatial query support, and silent-overwrite risk on concurrent
 edits. Supabase gives real constraints, RLS-scoped access, and PostGIS-ready geo indexing,
-for the same $0 cost at this scale. The Sheet *view* in the app is what actually satisfies
-the "maintain it like a spreadsheet" instinct — see UI below.
+for the same $0 cost at this scale.
 
 ## Cost
 
@@ -101,6 +108,52 @@ signal each page's data fetch listens for.
   proper SSR session handling later for a cleaner logged-out experience.
 - Node locally is v20.14; Supabase's JS packages prefer v22+ (warning only, not blocking).
   Worth upgrading Node at some point.
+
+## Coding conventions
+
+- No code comments unless they explain a non-obvious *why* (a workaround, a subtle
+  invariant) — see e.g. the `primary_tag_id` and palette-rotation comments in
+  `lib/tags.ts`/the migration. Don't add comments that just restate what the code does.
+  Well-named identifiers already do that.
+- Tailwind utility-first throughout, always pairing light/dark variants (`dark:` classes)
+  rather than a separate theme stylesheet.
+- Shared cross-page state (auth session, open sheet, refresh signal) goes through
+  `RestaurantUIContext` in `AppShell`, not prop-drilling or a separate state library.
+- Supabase reads/writes go through `lib/*.ts` helper functions (`fetchRestaurants`,
+  `createTag`, etc.) — components don't call the Supabase client directly.
+
+## What Claude should know
+
+- This is **not** the Next.js you know from training data — read `@AGENTS.md` and the
+  docs it points to before assuming an API/convention.
+- The real security boundary is Postgres RLS, not the client-side auth gate in
+  `AppShell` — don't "fix" the client-only auth check without discussing it first, it's
+  a deliberate simplification (see Known simplifications).
+- `@vis.gl/react-google-maps`'s `<Map>` component silently drops its own default
+  `width:100%; height:100%` styling the moment you pass it a `className` — if the map
+  ever goes blank/zero-height again, check the height chain (`html`/`body`/`main` all
+  need a *definite* height, not just `min-height`) before assuming it's a JS crash.
+- Always ask before deleting anything non-trivial (files, DB rows, migrations).
+- Prefer simple, boring solutions over clever ones — this is a small app for <5 people,
+  not a platform.
+
+## What to avoid
+
+- Don't install new packages without asking first.
+- Don't run ad-hoc schema changes against Supabase directly (SQL editor, one-off
+  `ALTER TABLE`s) — every schema change goes into a new `supabase/migrations/NNNN_*.sql`
+  file so the migration history stays the source of truth.
+- Never touch, print, or commit `.env*` files (all git-ignored except `.env*.example`,
+  which must only ever contain empty placeholders — see `.env.local.example`).
+
+## Github workflow
+
+- Never commit or push automatically — only on explicit instruction, each time.
+- Before pushing: check the diff for bugs and security risks (leaked secrets, RLS gaps,
+  server-only keys accidentally reachable from client code) — see the review pass done
+  before the tags/area/city commit as the template for this.
+- When committing, summarize what changed and why in the commit message, not just what
+  files touched.
 
 ## Setup checklist
 
