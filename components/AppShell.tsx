@@ -1,0 +1,89 @@
+"use client";
+
+import { createContext, useContext, useEffect, useState } from "react";
+import type { Session } from "@supabase/supabase-js";
+import { supabase } from "@/lib/supabase";
+import type { Restaurant } from "@/lib/types";
+import { Header } from "./Header";
+import { BottomSheet } from "./BottomSheet";
+import { RestaurantDetailView } from "./RestaurantDetailView";
+import { AddRestaurantFlow } from "./AddRestaurantFlow";
+import { LoginForm } from "./LoginForm";
+
+type SheetState =
+  | { kind: "detail"; restaurant: Restaurant }
+  | { kind: "add" }
+  | { kind: "edit"; restaurant: Restaurant }
+  | null;
+
+interface RestaurantUIContextValue {
+  openDetail: (restaurant: Restaurant) => void;
+  openEdit: (restaurant: Restaurant) => void;
+  // bump after any create/update so Map/List/Sheet pages know to refetch
+  refreshToken: number;
+}
+
+const RestaurantUIContext = createContext<RestaurantUIContextValue | null>(null);
+
+export function useRestaurantUI() {
+  const ctx = useContext(RestaurantUIContext);
+  if (!ctx) throw new Error("useRestaurantUI must be used within AppShell");
+  return ctx;
+}
+
+export function AppShell({ children }: { children: React.ReactNode }) {
+  const [session, setSession] = useState<Session | null | undefined>(undefined);
+  const [sheet, setSheet] = useState<SheetState>(null);
+  const [refreshToken, setRefreshToken] = useState(0);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => setSession(data.session));
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, s) => setSession(s));
+    return () => subscription.unsubscribe();
+  }, []);
+
+  if (session === undefined) {
+    return (
+      <div className="flex flex-1 items-center justify-center text-sm text-black/50 dark:text-white/50">
+        Loading…
+      </div>
+    );
+  }
+
+  if (!session) {
+    return <LoginForm />;
+  }
+
+  function handleDone() {
+    setSheet(null);
+    setRefreshToken((n) => n + 1);
+  }
+
+  return (
+    <RestaurantUIContext.Provider
+      value={{
+        openDetail: (r) => setSheet({ kind: "detail", restaurant: r }),
+        openEdit: (r) => setSheet({ kind: "edit", restaurant: r }),
+        refreshToken,
+      }}
+    >
+      <Header onAdd={() => setSheet({ kind: "add" })} />
+      <main className="flex min-h-0 flex-1 flex-col">{children}</main>
+
+      <BottomSheet open={sheet !== null} onClose={() => setSheet(null)}>
+        {sheet?.kind === "detail" && (
+          <RestaurantDetailView
+            restaurant={sheet.restaurant}
+            onEdit={() => setSheet({ kind: "edit", restaurant: sheet.restaurant })}
+          />
+        )}
+        {sheet?.kind === "add" && <AddRestaurantFlow onDone={handleDone} />}
+        {sheet?.kind === "edit" && (
+          <AddRestaurantFlow editing={sheet.restaurant} onDone={handleDone} />
+        )}
+      </BottomSheet>
+    </RestaurantUIContext.Provider>
+  );
+}
