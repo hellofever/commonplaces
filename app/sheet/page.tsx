@@ -1,10 +1,16 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { fetchRestaurants } from "@/lib/restaurants";
 import { tagColor } from "@/lib/tags";
 import { useRestaurantUI } from "@/components/AppShell";
+import {
+  compareRestaurants,
+  isSheetColumn,
+  type SheetColumn,
+  type SortDirection,
+} from "@/lib/sheetSort";
 import type { Restaurant } from "@/lib/types";
 
 function matches(r: Restaurant, q: string): boolean {
@@ -19,12 +25,40 @@ function matches(r: Restaurant, q: string): boolean {
   );
 }
 
+const COLUMNS: { key: SheetColumn; label: string }[] = [
+  { key: "fav", label: "Fav" },
+  { key: "name", label: "Name" },
+  { key: "tags", label: "Tags" },
+  { key: "area", label: "Area" },
+  { key: "city", label: "City" },
+  { key: "address", label: "Address" },
+  { key: "phone", label: "Phone" },
+  { key: "price", label: "Price" },
+  { key: "notes", label: "Notes" },
+];
+
 export default function SheetPage() {
   const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
   const query = searchParams.get("q") ?? "";
   const { openEdit, openAdd, refreshToken } = useRestaurantUI();
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
   const [loading, setLoading] = useState(true);
+
+  const sortParam = searchParams.get("sheetSort");
+  const sortColumn: SheetColumn = isSheetColumn(sortParam) ? sortParam : "name";
+  const sortDir: SortDirection = searchParams.get("sheetDir") === "desc" ? "desc" : "asc";
+
+  function toggleSort(column: SheetColumn) {
+    const params = new URLSearchParams(searchParams.toString());
+    const nextDir: SortDirection =
+      column === sortColumn ? (sortDir === "asc" ? "desc" : "asc") : "asc";
+    params.set("sheetSort", column);
+    params.set("sheetDir", nextDir);
+    const qs = params.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname);
+  }
 
   useEffect(() => {
     setLoading(true);
@@ -35,17 +69,16 @@ export default function SheetPage() {
   }, [refreshToken]);
 
   const q = query.trim().toLowerCase();
-  const filtered = restaurants.filter((r) => matches(r, q));
+  const filtered = [...restaurants.filter((r) => matches(r, q))].sort((a, b) =>
+    compareRestaurants(a, b, sortColumn, sortDir)
+  );
 
   if (loading) {
     return (
       <div className="flex-1 overflow-auto p-4">
         <div className="flex flex-col gap-2">
           {[...Array(6)].map((_, i) => (
-            <div
-              key={i}
-              className="h-9 animate-pulse rounded-lg bg-black/5 dark:bg-white/5"
-            />
+            <div key={i} className="h-9 animate-pulse rounded-lg bg-black/5 dark:bg-white/5" />
           ))}
         </div>
       </div>
@@ -71,15 +104,21 @@ export default function SheetPage() {
       <table className="w-full min-w-[860px] border-collapse text-sm">
         <thead>
           <tr className="border-b border-black/10 text-left text-xs uppercase tracking-wide text-black/50 dark:border-white/10 dark:text-white/50">
-            <th className="px-3 py-2">Fav</th>
-            <th className="px-3 py-2">Name</th>
-            <th className="px-3 py-2">Tags</th>
-            <th className="px-3 py-2">Area</th>
-            <th className="px-3 py-2">City</th>
-            <th className="px-3 py-2">Address</th>
-            <th className="px-3 py-2">Phone</th>
-            <th className="px-3 py-2">Price</th>
-            <th className="px-3 py-2">Notes</th>
+            {COLUMNS.map((col) => {
+              const active = col.key === sortColumn;
+              return (
+                <th
+                  key={col.key}
+                  onClick={() => toggleSort(col.key)}
+                  className={`cursor-pointer select-none px-3 py-2 hover:text-black/80 dark:hover:text-white/80 ${
+                    active ? "text-black/80 dark:text-white/80" : ""
+                  }`}
+                >
+                  {col.label}
+                  {active && <span className="ml-1">{sortDir === "asc" ? "▲" : "▼"}</span>}
+                </th>
+              );
+            })}
           </tr>
         </thead>
         <tbody>
