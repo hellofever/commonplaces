@@ -1,19 +1,45 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { APIProvider, Map, AdvancedMarker, Pin } from "@vis.gl/react-google-maps";
+import { APIProvider, Map, AdvancedMarker, Pin, useMap } from "@vis.gl/react-google-maps";
 import { tagColor } from "@/lib/tags";
 import { fetchRestaurants } from "@/lib/restaurants";
 import { useRestaurantUI } from "./AppShell";
 import type { Restaurant } from "@/lib/types";
 
-export function MapView({ query }: { query: string }) {
+const FOCUS_ZOOM = 17;
+
+// Imperatively pans/zooms once both the map instance and the target restaurant are
+// ready -- can't just use a smarter defaultCenter/defaultZoom, since the restaurant
+// list (and therefore which one matches focusPlaceId) loads asynchronously after the
+// Map has already mounted at its default view.
+function FocusOnPlace({ restaurant }: { restaurant: Restaurant | null }) {
+  const map = useMap();
+  useEffect(() => {
+    if (!map || !restaurant) return;
+    map.panTo({ lat: restaurant.lat, lng: restaurant.lng });
+    map.setZoom(FOCUS_ZOOM);
+  }, [map, restaurant]);
+  return null;
+}
+
+export function MapView({
+  query,
+  focusPlaceId,
+}: {
+  query: string;
+  focusPlaceId?: string | null;
+}) {
   const { openDetail, refreshToken } = useRestaurantUI();
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
 
   useEffect(() => {
     fetchRestaurants().then(setRestaurants).catch(console.error);
   }, [refreshToken]);
+
+  const focusedRestaurant = focusPlaceId
+    ? (restaurants.find((r) => r.id === focusPlaceId) ?? null)
+    : null;
 
   const q = query.trim().toLowerCase();
   const filtered = restaurants.filter((r) => {
@@ -46,6 +72,7 @@ export function MapView({ query }: { query: string }) {
         mapId="7a03f40461f9aed6ce58ae14"
         gestureHandling="greedy"
       >
+        <FocusOnPlace restaurant={focusedRestaurant} />
         {filtered.map((r) => (
           <AdvancedMarker
             key={r.id}
