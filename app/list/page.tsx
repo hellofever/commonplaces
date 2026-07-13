@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { fetchRestaurants } from "@/lib/restaurants";
 import { tagColor } from "@/lib/tags";
 import { useRestaurantUI } from "@/components/AppShell";
+import { ListFilters, matchesFilters, type FilterState } from "@/components/ListFilters";
+import { DEFAULT_SORT, SORT_OPTIONS, groupByArea, isSortKey, sortRestaurants } from "@/lib/sort";
 import type { Restaurant } from "@/lib/types";
 
 function matches(r: Restaurant, q: string): boolean {
@@ -19,12 +21,69 @@ function matches(r: Restaurant, q: string): boolean {
   );
 }
 
+function RestaurantRow({ restaurant: r, onClick }: { restaurant: Restaurant; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className="flex items-center gap-3 rounded-lg border border-black/10 px-3 py-2.5 text-left dark:border-white/10"
+    >
+      <span
+        className="h-2 w-2 flex-none rounded-full"
+        style={{ background: tagColor(r.primaryTag) }}
+      />
+      <span className="min-w-0 flex-1">
+        <span className="block text-sm font-medium">
+          {r.is_favourite && <span className="text-[#bd5a1f]">★ </span>}
+          {r.name}
+        </span>
+        <span className="block truncate text-xs text-black/50 dark:text-white/50">
+          {[...r.areas.map((a) => a.name), ...r.tags.map((t) => t.name), r.website, r.notes]
+            .filter(Boolean)
+            .join(" · ") || r.address}
+        </span>
+      </span>
+      <span className="text-black/40">›</span>
+    </button>
+  );
+}
+
 export default function ListPage() {
   const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
   const query = searchParams.get("q") ?? "";
   const { openDetail, openAdd, refreshToken } = useRestaurantUI();
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
   const [loading, setLoading] = useState(true);
+
+  const filters: FilterState = {
+    tagIds: (searchParams.get("tags") ?? "").split(",").filter(Boolean),
+    areaIds: (searchParams.get("areas") ?? "").split(",").filter(Boolean),
+    favouritesOnly: searchParams.get("fav") === "1",
+  };
+
+  function updateFilters(next: FilterState) {
+    const params = new URLSearchParams(searchParams.toString());
+    if (next.tagIds.length > 0) params.set("tags", next.tagIds.join(","));
+    else params.delete("tags");
+    if (next.areaIds.length > 0) params.set("areas", next.areaIds.join(","));
+    else params.delete("areas");
+    if (next.favouritesOnly) params.set("fav", "1");
+    else params.delete("fav");
+    const qs = params.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname);
+  }
+
+  const sortParam = searchParams.get("sort");
+  const sort = isSortKey(sortParam) ? sortParam : DEFAULT_SORT;
+
+  function updateSort(next: string) {
+    const params = new URLSearchParams(searchParams.toString());
+    if (next === DEFAULT_SORT) params.delete("sort");
+    else params.set("sort", next);
+    const qs = params.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname);
+  }
 
   useEffect(() => {
     setLoading(true);
@@ -35,17 +94,18 @@ export default function ListPage() {
   }, [refreshToken]);
 
   const q = query.trim().toLowerCase();
-  const filtered = restaurants.filter((r) => matches(r, q));
+  const matched = restaurants.filter((r) => matches(r, q) && matchesFilters(r, filters));
+  const groupedByArea = sort === "area" ? groupByArea(matched) : null;
+  const flat = groupedByArea ? null : sortRestaurants(matched, sort);
 
   if (loading) {
     return (
-      <div className="flex flex-1 flex-col gap-2 overflow-y-auto p-4">
-        {[...Array(6)].map((_, i) => (
-          <div
-            key={i}
-            className="h-[58px] animate-pulse rounded-lg bg-black/5 dark:bg-white/5"
-          />
-        ))}
+      <div className="flex flex-1 flex-col overflow-y-auto p-4">
+        <div className="mx-auto flex w-full max-w-[800px] flex-col gap-2">
+          {[...Array(6)].map((_, i) => (
+            <div key={i} className="h-[58px] animate-pulse rounded-lg bg-black/5 dark:bg-white/5" />
+          ))}
+        </div>
       </div>
     );
   }
@@ -65,35 +125,49 @@ export default function ListPage() {
   }
 
   return (
-    <div className="flex flex-1 flex-col gap-2 overflow-y-auto p-4">
-      {filtered.map((r) => (
-        <button
-          key={r.id}
-          onClick={() => openDetail(r)}
-          className="flex items-center gap-3 rounded-lg border border-black/10 px-3 py-2.5 text-left dark:border-white/10"
-        >
-          <span
-            className="h-2 w-2 flex-none rounded-full"
-            style={{ background: tagColor(r.primaryTag) }}
-          />
-          <span className="min-w-0 flex-1">
-            <span className="block text-sm font-medium">
-              {r.is_favourite && <span className="text-[#bd5a1f]">★ </span>}
-              {r.name}
-            </span>
-            <span className="block text-xs text-black/50 dark:text-white/50">
-              {[...r.tags.map((t) => t.name), ...r.areas.map((a) => a.name)].join(" · ") ||
-                r.address}
-            </span>
-          </span>
-          <span className="text-black/40">›</span>
-        </button>
-      ))}
-      {filtered.length === 0 && (
-        <p className="p-6 text-center text-sm text-black/50 dark:text-white/50">
-          No matches for that search.
-        </p>
-      )}
+    <div className="flex flex-1 flex-col overflow-hidden">
+      <ListFilters
+        value={filters}
+        onChange={updateFilters}
+        trailing={
+          <select
+            value={sort}
+            onChange={(e) => updateSort(e.target.value)}
+            className="rounded-full border border-black/10 px-3 py-1.5 text-xs text-black/70 dark:border-white/10 dark:bg-white/5 dark:text-white/70"
+          >
+            {SORT_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+        }
+      />
+      <div className="flex flex-1 flex-col overflow-y-auto p-4">
+        <div className="mx-auto flex w-full max-w-[800px] flex-col gap-2">
+          {groupedByArea
+            ? groupedByArea.map((group, i) => (
+                <div key={group.areaName} className="flex flex-col gap-2">
+                  <h3
+                    className={`px-1 text-xs font-semibold uppercase tracking-wide text-black/50 dark:text-white/50 ${i === 0 ? "" : "pt-3"}`}
+                  >
+                    {group.areaName}
+                  </h3>
+                  {group.restaurants.map((r) => (
+                    <RestaurantRow key={r.id} restaurant={r} onClick={() => openDetail(r)} />
+                  ))}
+                </div>
+              ))
+            : flat!.map((r) => (
+                <RestaurantRow key={r.id} restaurant={r} onClick={() => openDetail(r)} />
+              ))}
+          {matched.length === 0 && (
+            <p className="p-6 text-center text-sm text-black/50 dark:text-white/50">
+              No restaurants match your search/filters.
+            </p>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
