@@ -1,24 +1,16 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import * as PhosphorIcons from "@phosphor-icons/react";
-import { createTag, fetchTags, tagColor, TAG_ICONS, type Tag, type TagKind } from "@/lib/tags";
-
-// Icon components are looked up by name from TAG_ICONS (see lib/tags.ts) rather than
-// imported individually, since the whitelist may grow -- PhosphorIcons is typed loosely
-// here because @phosphor-icons/react's module namespace mixes icon components with
-// other exports (e.g. IconContext) that don't share the icon component's props shape.
-const PHOSPHOR_ICON_MAP = PhosphorIcons as unknown as Record<
-  string,
-  React.ComponentType<{ size?: number; weight?: string }>
->;
+import { TagPills } from "@/components/TagPills";
+import { createTag, fetchTags, PHOSPHOR_ICON_MAP, TAG_ICONS, type Tag, type TagKind } from "@/lib/tags";
 
 // Shared multi/single-select for tags, area, and city -- all three are user-creatable,
-// freeform lists stored the same way (see lib/tags.ts). Available options render as
-// click-to-add pills (no typing required); selected ones render below as click-to-remove
-// pills. `multiple` just controls whether picking a new option replaces the current
-// selection or adds to it; nothing at the data layer enforces single-select for city,
-// it's purely a UI choice.
+// freeform lists stored the same way (see lib/tags.ts). Options render as a single row
+// of click-to-toggle pills via TagPills, same as the Filters dropdown -- a pill stays in
+// place and just activates/deactivates, it doesn't jump to a separate "selected" row.
+// `multiple` just controls whether picking a new option replaces the current selection
+// or adds to it; nothing at the data layer enforces single-select for city, it's purely
+// a UI choice.
 export function TagPicker({
   kind,
   label,
@@ -43,9 +35,6 @@ export function TagPicker({
   useEffect(() => {
     fetchTags(kind).then(setOptions).catch(console.error);
   }, [kind]);
-
-  const selected = options.filter((o) => selectedIds.includes(o.id));
-  const available = options.filter((o) => !selectedIds.includes(o.id));
 
   function toggle(id: string) {
     if (multiple) {
@@ -75,17 +64,7 @@ export function TagPicker({
       <span>{label}</span>
 
       <div className="flex flex-wrap gap-1.5">
-        {available.map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            onClick={() => toggle(t.id)}
-            className="rounded-full border px-2.5 py-1 text-xs"
-            style={{ borderColor: tagColor(t), color: tagColor(t) }}
-          >
-            + {t.name}
-          </button>
-        ))}
+        <TagPills kind={kind} options={options} selectedIds={selectedIds} onToggle={toggle} />
         {!showCreate && (
           <button
             type="button"
@@ -151,22 +130,6 @@ export function TagPicker({
               })}
             </div>
           )}
-        </div>
-      )}
-
-      {selected.length > 0 && (
-        <div className="flex flex-wrap gap-1.5">
-          {selected.map((t) => (
-            <button
-              key={t.id}
-              type="button"
-              onClick={() => toggle(t.id)}
-              className="flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs text-white"
-              style={{ background: tagColor(t), borderColor: tagColor(t) }}
-            >
-              {t.name} ×
-            </button>
-          ))}
         </div>
       )}
     </div>

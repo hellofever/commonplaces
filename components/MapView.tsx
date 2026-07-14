@@ -2,16 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { APIProvider, Map, AdvancedMarker, useMap } from "@vis.gl/react-google-maps";
-import * as PhosphorIcons from "@phosphor-icons/react";
 import { ArrowsHorizontal } from "@phosphor-icons/react";
-import { tagColor, tagIcon } from "@/lib/tags";
-
-// Same loose lookup-by-name approach as TagPicker -- resolves a tag's icon name
-// (see lib/tags.ts's TAG_ICONS whitelist) to its component without an import per icon.
-const PHOSPHOR_ICON_MAP = PhosphorIcons as unknown as Record<
-  string,
-  React.ComponentType<{ size?: number; weight?: string; color?: string }>
->;
+import { PHOSPHOR_ICON_MAP, tagColor, tagIcon } from "@/lib/tags";
 import { fetchRestaurants } from "@/lib/restaurants";
 import { useRestaurantUI } from "./AppShell";
 import { MapControlsDrawer } from "./MapControlsDrawer";
@@ -96,13 +88,23 @@ export function MapView({
 }) {
   const { refreshToken } = useRestaurantUI();
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
+  const [loadError, setLoadError] = useState(false);
+  const [retryToken, setRetryToken] = useState(0);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const centerBeforeResize = useRef<google.maps.LatLng | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchRestaurants().then(setRestaurants).catch(console.error);
-  }, [refreshToken]);
+    fetchRestaurants()
+      .then((data) => {
+        setRestaurants(data);
+        setLoadError(false);
+      })
+      .catch((err) => {
+        console.error(err);
+        setLoadError(true);
+      });
+  }, [refreshToken, retryToken]);
 
   const focusedRestaurant = focusPlaceId
     ? (restaurants.find((r) => r.id === focusPlaceId) ?? null)
@@ -141,13 +143,25 @@ export function MapView({
     <APIProvider apiKey={apiKey}>
       <div className="relative flex flex-1 flex-col md:flex-row">
         <div className="relative min-h-0 min-w-0 flex-1 md:order-2">
+          {loadError && (
+            <div className="absolute inset-x-0 top-4 z-10 mx-auto flex w-fit items-center gap-3 rounded-full bg-white/95 px-4 py-2 text-sm text-black/70 shadow dark:bg-black/85 dark:text-white/70">
+              Couldn’t load places.
+              <button
+                onClick={() => setRetryToken((n) => n + 1)}
+                className="font-medium underline"
+              >
+                Retry
+              </button>
+            </div>
+          )}
           <Map
             className="h-full w-full"
             defaultCenter={{ lat: -33.8688, lng: 151.2093 }}
             defaultZoom={12}
-            mapId="7a03f40461f9aed667a8cf4f"
+            mapId={process.env.NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID || "7a03f40461f9aed667a8cf4f"}
             gestureHandling="greedy"
             mapTypeControl={false}
+            onClick={() => setSelectedId(null)}
           >
             <FocusOnPlace restaurant={focusedRestaurant} />
             {filtered.map((r) => (

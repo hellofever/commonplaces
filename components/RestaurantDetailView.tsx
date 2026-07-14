@@ -50,6 +50,12 @@ export function RestaurantDetailView({
   onEdit: () => void;
 }) {
   const directionsUrl = `https://www.google.com/maps/dir/?api=1&destination=${restaurant.lat},${restaurant.lng}`;
+  // Only link out to http(s) URLs -- website is freeform user text (form or Sheet
+  // paste), so anything else (e.g. a javascript: URL) renders as plain text instead.
+  const websiteHref =
+    restaurant.website && /^https?:\/\//i.test(restaurant.website.trim())
+      ? restaurant.website.trim()
+      : null;
   const { refresh } = useRestaurantUI();
   const [favourite, setFavouriteState] = useState(restaurant.is_favourite);
   const [toggling, setToggling] = useState(false);
@@ -140,15 +146,19 @@ export function RestaurantDetailView({
       {restaurant.phone && (
         <p className="text-sm text-black/70 dark:text-white/70">{restaurant.phone}</p>
       )}
-      {restaurant.website && (
+      {websiteHref ? (
         <a
-          href={restaurant.website}
+          href={websiteHref}
           target="_blank"
           rel="noreferrer"
           className="truncate text-sm text-[#bd5a1f] underline"
         >
-          {restaurant.website}
+          {websiteHref}
         </a>
+      ) : (
+        restaurant.website && (
+          <p className="truncate text-sm text-black/70 dark:text-white/70">{restaurant.website}</p>
+        )
       )}
       {restaurant.notes && (
         <p className="text-sm italic text-black/60 dark:text-white/60">{restaurant.notes}</p>

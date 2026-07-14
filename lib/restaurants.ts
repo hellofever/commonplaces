@@ -53,17 +53,13 @@ export async function fetchRestaurantById(id: string): Promise<Restaurant> {
 // one kind is being edited (e.g. the Sheet's Tags cell), combine the new ids for that
 // kind with the restaurant's existing ids for the other two before calling this.
 export async function updateRestaurantTags(restaurantId: string, tagIds: string[]): Promise<void> {
-  const { error: deleteError } = await supabase
-    .from("restaurant_tags")
-    .delete()
-    .eq("restaurant_id", restaurantId);
-  if (deleteError) throw deleteError;
-
-  if (tagIds.length === 0) return;
-
-  const rows = tagIds.map((tag_id) => ({ restaurant_id: restaurantId, tag_id }));
-  const { error: insertError } = await supabase.from("restaurant_tags").insert(rows);
-  if (insertError) throw insertError;
+  // One transactional RPC (see 0005_replace_restaurant_tags_fn.sql) rather than
+  // delete-then-insert from the client, which could strip all tags if the insert failed.
+  const { error } = await supabase.rpc("replace_restaurant_tags", {
+    p_restaurant_id: restaurantId,
+    p_tag_ids: tagIds,
+  });
+  if (error) throw error;
 }
 
 function splitInput(input: RestaurantInput) {

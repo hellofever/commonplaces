@@ -1,4 +1,8 @@
+import { requireUser } from "../requireUser";
+
 export const dynamic = "force-dynamic";
+
+const MAX_QUERY_LENGTH = 200;
 
 interface PlacesTextSearchResult {
   id: string;
@@ -9,10 +13,18 @@ interface PlacesTextSearchResult {
 }
 
 export async function POST(request: Request) {
-  const { query } = await request.json();
+  const unauthorized = await requireUser(request);
+  if (unauthorized) return unauthorized;
 
-  if (!query || typeof query !== "string") {
-    return Response.json({ error: "Missing query" }, { status: 400 });
+  let query: unknown;
+  try {
+    ({ query } = await request.json());
+  } catch {
+    return Response.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+
+  if (!query || typeof query !== "string" || query.length > MAX_QUERY_LENGTH) {
+    return Response.json({ error: "Missing or invalid query" }, { status: 400 });
   }
 
   const apiKey = process.env.GOOGLE_PLACES_API_KEY;
@@ -33,8 +45,10 @@ export async function POST(request: Request) {
   });
 
   if (!res.ok) {
-    const detail = await res.text();
-    return Response.json({ error: "Places search failed", detail }, { status: 502 });
+    // Google's error bodies can include project/request details -- keep them
+    // server-side and return only a generic message.
+    console.error("Places search failed:", res.status, await res.text());
+    return Response.json({ error: "Places search failed" }, { status: 502 });
   }
 
   const data = (await res.json()) as { places?: PlacesTextSearchResult[] };

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Suspense } from "react";
+import { ThemeProvider } from "next-themes";
 import "./globals.css";
 import { AppShell } from "@/components/AppShell";
 
@@ -28,11 +29,14 @@ export default function RootLayout({
     <html
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      suppressHydrationWarning
     >
       <body className="flex h-full flex-col">
-        <Suspense>
-          <AppShell>{children}</AppShell>
-        </Suspense>
+        <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
+          <Suspense>
+            <AppShell>{children}</AppShell>
+          </Suspense>
+        </ThemeProvider>
       </body>
     </html>
   );

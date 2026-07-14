@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Gear, Plus } from "@phosphor-icons/react";
 import { BottomSheet } from "./BottomSheet";
+import { ThemeToggle } from "./ThemeToggle";
 
 const TABS = [
   { href: "/", label: "Map" },
@@ -78,9 +79,9 @@ export function Header({ onAdd }: { onAdd: () => void }) {
 
       <BottomSheet open={settingsOpen} onClose={() => setSettingsOpen(false)}>
         <h2 className="text-lg font-semibold">Settings</h2>
-        <p className="mt-2 text-sm text-black/60 dark:text-white/60">
-          Nothing here yet — settings are coming soon.
-        </p>
+        <div className="mt-4">
+          <ThemeToggle />
+        </div>
       </BottomSheet>
     </header>
   );

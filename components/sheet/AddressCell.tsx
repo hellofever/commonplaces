@@ -53,7 +53,7 @@ export function AddressCell({
         }}
         className="min-w-0 flex-1 truncate text-left"
       >
-        {value}
+        {value || <span className="text-black/30 dark:text-white/30">Empty</span>}
       </button>
       {needsReview && (
         <button

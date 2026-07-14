@@ -3,8 +3,12 @@
 import { useState } from "react";
 import { supabase } from "@/lib/supabase";
 
+// Sign-in only: the group's accounts already exist, and an in-app sign-up form
+// would hand full read/write access (RLS grants it to any authenticated user) to
+// anyone who finds the URL. New accounts are created from the Supabase dashboard --
+// keep "Allow new users to sign up" disabled there too, since the Auth API is
+// reachable with the public anon key regardless of what this form shows.
 export function LoginForm() {
-  const [mode, setMode] = useState<"sign-in" | "sign-up">("sign-in");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -14,10 +18,7 @@ export function LoginForm() {
     e.preventDefault();
     setLoading(true);
     setError(null);
-    const { error } =
-      mode === "sign-in"
-        ? await supabase.auth.signInWithPassword({ email, password })
-        : await supabase.auth.signUp({ email, password });
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) setError(error.message);
     setLoading(false);
   }
@@ -25,9 +26,7 @@ export function LoginForm() {
   return (
     <div className="flex flex-1 items-center justify-center p-6">
       <form onSubmit={handleSubmit} className="flex w-full max-w-sm flex-col gap-3">
-        <h1 className="text-lg font-semibold">
-          {mode === "sign-in" ? "Sign in" : "Create account"}
-        </h1>
+        <h1 className="text-lg font-semibold">Sign in</h1>
         <input
           type="email"
           required
@@ -50,14 +49,7 @@ export function LoginForm() {
           disabled={loading}
           className="rounded-lg bg-black py-2.5 text-sm font-medium text-white disabled:opacity-50 dark:bg-white dark:text-black"
         >
-          {loading ? "Please wait…" : mode === "sign-in" ? "Sign in" : "Create account"}
-        </button>
-        <button
-          type="button"
-          onClick={() => setMode(mode === "sign-in" ? "sign-up" : "sign-in")}
-          className="text-xs text-black/50 underline dark:text-white/50"
-        >
-          {mode === "sign-in" ? "Need an account? Create one" : "Already have an account? Sign in"}
+          {loading ? "Please wait…" : "Sign in"}
         </button>
       </form>
     </div>

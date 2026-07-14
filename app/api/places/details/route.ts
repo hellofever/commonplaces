@@ -1,3 +1,5 @@
+import { requireUser } from "../requireUser";
+
 export const dynamic = "force-dynamic";
 
 const PRICE_LEVEL_MAP: Record<string, number> = {
@@ -21,7 +23,15 @@ interface PlaceDetailsResult {
 }
 
 export async function POST(request: Request) {
-  const { placeId } = await request.json();
+  const unauthorized = await requireUser(request);
+  if (unauthorized) return unauthorized;
+
+  let placeId: unknown;
+  try {
+    ({ placeId } = await request.json());
+  } catch {
+    return Response.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
 
   if (!placeId || typeof placeId !== "string") {
     return Response.json({ error: "Missing placeId" }, { status: 400 });
@@ -32,27 +42,32 @@ export async function POST(request: Request) {
     return Response.json({ error: "GOOGLE_PLACES_API_KEY is not set" }, { status: 500 });
   }
 
-  const res = await fetch(`https://places.googleapis.com/v1/places/${placeId}`, {
-    headers: {
-      "X-Goog-Api-Key": apiKey,
-      "X-Goog-FieldMask": [
-        "id",
-        "displayName",
-        "formattedAddress",
-        "location",
-        "internationalPhoneNumber",
-        "websiteUri",
-        "priceLevel",
-        "regularOpeningHours",
-        "primaryType",
-      ].join(","),
-    },
-    cache: "no-store",
-  });
+  const res = await fetch(
+    `https://places.googleapis.com/v1/places/${encodeURIComponent(placeId)}`,
+    {
+      headers: {
+        "X-Goog-Api-Key": apiKey,
+        "X-Goog-FieldMask": [
+          "id",
+          "displayName",
+          "formattedAddress",
+          "location",
+          "internationalPhoneNumber",
+          "websiteUri",
+          "priceLevel",
+          "regularOpeningHours",
+          "primaryType",
+        ].join(","),
+      },
+      cache: "no-store",
+    }
+  );
 
   if (!res.ok) {
-    const detail = await res.text();
-    return Response.json({ error: "Places details failed", detail }, { status: 502 });
+    // Google's error bodies can include project/request details -- keep them
+    // server-side and return only a generic message.
+    console.error("Places details failed:", res.status, await res.text());
+    return Response.json({ error: "Places details failed" }, { status: 502 });
   }
 
   const p = (await res.json()) as PlaceDetailsResult;

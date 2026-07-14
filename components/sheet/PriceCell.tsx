@@ -52,7 +52,7 @@ export function PriceCell({
       }}
       className="block w-full px-3 py-2 text-left"
     >
-      {value ? formatPriceLevel(value) : <span className="text-black/30 dark:text-white/30">—</span>}
+      {value ? formatPriceLevel(value) : <span className="text-black/30 dark:text-white/30">Empty</span>}
     </button>
   );
 }

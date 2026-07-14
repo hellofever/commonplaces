@@ -1,5 +1,12 @@
 "use client";
 
+import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
+
+// Thin wrapper over shadcn's Sheet so callers keep the pre-shadcn open/onClose API.
+// Bottom sheet on mobile; on sm+ it becomes a vertically centered modal via
+// inset-0 + m-auto + h-fit (no translate centering, which would fight the slide-in
+// animation's transforms). The `!` overrides are needed because SheetContent's own
+// data-[side=bottom] positioning utilities would otherwise win the cascade.
 export function BottomSheet({
   open,
   onClose,
@@ -9,21 +16,15 @@ export function BottomSheet({
   onClose: () => void;
   children: React.ReactNode;
 }) {
-  if (!open) return null;
-
   return (
-    <div className="fixed inset-0 z-30 flex items-end justify-center sm:items-center">
-      <div className="absolute inset-0 bg-black/30" onClick={onClose} />
-      <div className="relative z-10 max-h-[85vh] w-full overflow-y-auto rounded-t-2xl bg-white p-5 shadow-xl sm:max-w-md sm:rounded-2xl dark:bg-zinc-900">
-        <button
-          onClick={onClose}
-          aria-label="Close"
-          className="absolute right-4 top-4 flex h-7 w-7 items-center justify-center rounded-full border border-black/10 text-black/50 dark:border-white/10 dark:text-white/50"
-        >
-          ✕
-        </button>
+    <Sheet open={open} onOpenChange={(o) => !o && onClose()}>
+      <SheetContent
+        side="bottom"
+        className="max-h-[85vh] gap-0 overflow-y-auto rounded-t-2xl p-5 sm:inset-0! sm:m-auto! sm:h-fit! sm:w-full sm:max-w-md sm:rounded-2xl"
+      >
+        <SheetTitle className="sr-only">Panel</SheetTitle>
         {children}
-      </div>
-    </div>
+      </SheetContent>
+    </Sheet>
   );
 }

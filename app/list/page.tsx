@@ -182,24 +182,27 @@ export default function ListPage() {
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
-      <ListFilters
-        value={filters}
-        onChange={updateFilters}
-        trailing={
-          <select
-            value={sort}
-            onChange={(e) => updateSort(e.target.value)}
-            className="rounded-full border border-black/10 px-3 py-1.5 text-xs text-black/70 dark:border-white/10 dark:bg-white/5 dark:text-white/70"
-          >
-            {SORT_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>
-                {o.label}
-              </option>
-            ))}
-          </select>
-        }
-      />
-      <div className="flex flex-1 flex-col overflow-y-auto p-4">
+      <div className="mx-4 mt-4 mb-2 rounded-lg bg-black/5 px-3 py-2 dark:bg-white/10">
+        <ListFilters
+          value={filters}
+          onChange={updateFilters}
+          className="flex flex-col gap-2"
+          trailing={
+            <select
+              value={sort}
+              onChange={(e) => updateSort(e.target.value)}
+              className="rounded-full border border-black/10 px-3 py-1.5 text-xs text-black/70 dark:border-white/10 dark:bg-white/5 dark:text-white/70"
+            >
+              {SORT_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          }
+        />
+      </div>
+      <div className="flex flex-1 flex-col overflow-y-auto p-4 pt-0">
         <div className="mx-auto flex w-full max-w-[800px] flex-col gap-2">
           {groupedByArea
             ? groupedByArea.map((group, i) => (

@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { fetchTags, tagColor, type Tag } from "@/lib/tags";
+import { Dropdown, dropdownTriggerClass } from "@/components/Dropdown";
+import { TagPills } from "@/components/TagPills";
+import { fetchTags, type Tag } from "@/lib/tags";
 
 export interface FilterState {
   tagIds: string[];
@@ -29,12 +31,13 @@ export function ListFilters({
   value,
   onChange,
   trailing,
+  className = "flex flex-col gap-2 px-4 pt-3",
 }: {
   value: FilterState;
   onChange: (next: FilterState) => void;
   trailing?: React.ReactNode;
+  className?: string;
 }) {
-  const [open, setOpen] = useState(false);
   const [tags, setTags] = useState<Tag[]>([]);
   const [areas, setAreas] = useState<Tag[]>([]);
 
@@ -64,95 +67,61 @@ export function ListFilters({
   }
 
   return (
-    <div className="flex flex-col gap-2 px-4 pt-3">
+    <div className={className}>
       <div className="flex items-center gap-2">
-        <button
-          type="button"
-          onClick={() => setOpen((o) => !o)}
-          className="flex w-fit items-center gap-1.5 rounded-full border border-black/10 px-3 py-1.5 text-xs font-medium text-black/70 dark:border-white/10 dark:text-white/70"
-        >
-          Filters{activeCount > 0 ? ` (${activeCount})` : ""}
-          <span className="text-black/40">{open ? "▲" : "▼"}</span>
-        </button>
-        {trailing}
-      </div>
-
-      {open && (
-        <div className="flex flex-col gap-3 rounded-lg border border-black/10 p-3 dark:border-white/10">
-          <button
-            type="button"
-            onClick={() => onChange({ ...value, favouritesOnly: !value.favouritesOnly })}
-            className={`w-fit rounded-full border px-2.5 py-1 text-xs font-medium ${
-              value.favouritesOnly
-                ? "border-[#bd5a1f] bg-[#bd5a1f] text-white"
-                : "border-black/15 text-black/70 dark:border-white/15 dark:text-white/70"
-            }`}
-          >
-            ★ Favourites only
-          </button>
-
-          {tags.length > 0 && (
-            <div className="flex flex-col gap-1.5">
-              <span className="text-xs text-black/50 dark:text-white/50">Tags</span>
-              <div className="flex flex-wrap gap-1.5">
-                {tags.map((t) => {
-                  const active = value.tagIds.includes(t.id);
-                  return (
-                    <button
-                      key={t.id}
-                      type="button"
-                      onClick={() => toggleTag(t.id)}
-                      className="rounded-full border px-2.5 py-1 text-xs"
-                      style={
-                        active
-                          ? { background: tagColor(t), borderColor: tagColor(t), color: "white" }
-                          : { borderColor: tagColor(t), color: tagColor(t) }
-                      }
-                    >
-                      {t.name}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {areas.length > 0 && (
-            <div className="flex flex-col gap-1.5">
-              <span className="text-xs text-black/50 dark:text-white/50">Area</span>
-              <div className="flex flex-wrap gap-1.5">
-                {areas.map((a) => {
-                  const active = value.areaIds.includes(a.id);
-                  return (
-                    <button
-                      key={a.id}
-                      type="button"
-                      onClick={() => toggleArea(a.id)}
-                      className={`rounded-full border px-2.5 py-1 text-xs ${
-                        active
-                          ? "border-black bg-black text-white dark:border-white dark:bg-white dark:text-black"
-                          : "border-black/15 text-black/70 dark:border-white/15 dark:text-white/70"
-                      }`}
-                    >
-                      {a.name}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {activeCount > 0 && (
-            <button
-              type="button"
-              onClick={() => onChange(EMPTY_FILTERS)}
-              className="w-fit text-xs text-black/50 underline dark:text-white/50"
-            >
-              Clear filters
+        <Dropdown
+          panelClassName="w-72"
+          trigger={({ open, toggle }) => (
+            <button type="button" onClick={toggle} className={dropdownTriggerClass}>
+              Filters{activeCount > 0 ? ` (${activeCount})` : ""}
+              <span className="text-black/40">{open ? "▲" : "▼"}</span>
             </button>
           )}
-        </div>
-      )}
+        >
+          <div className="flex flex-col gap-3">
+            <button
+              type="button"
+              onClick={() => onChange({ ...value, favouritesOnly: !value.favouritesOnly })}
+              className={`w-fit rounded-full border px-2.5 py-1 text-xs font-medium ${
+                value.favouritesOnly
+                  ? "border-[#bd5a1f] bg-[#bd5a1f] text-white"
+                  : "border-black/15 text-black/70 dark:border-white/15 dark:text-white/70"
+              }`}
+            >
+              ★ Favourites only
+            </button>
+
+            {tags.length > 0 && (
+              <div className="flex flex-col gap-1.5">
+                <span className="text-xs text-black/50 dark:text-white/50">Tags</span>
+                <div className="flex flex-wrap gap-1.5">
+                  <TagPills kind="tag" options={tags} selectedIds={value.tagIds} onToggle={toggleTag} />
+                </div>
+              </div>
+            )}
+
+            {areas.length > 0 && (
+              <div className="flex flex-col gap-1.5">
+                <span className="text-xs text-black/50 dark:text-white/50">Area</span>
+                <div className="flex flex-wrap gap-1.5">
+                  <TagPills kind="area" options={areas} selectedIds={value.areaIds} onToggle={toggleArea} />
+                </div>
+              </div>
+            )}
+
+            {activeCount > 0 && (
+              <button
+                type="button"
+                onClick={() => onChange(EMPTY_FILTERS)}
+                className="w-fit text-xs text-black/50 underline dark:text-white/50"
+              >
+                Clear filters
+              </button>
+            )}
+          </div>
+        </Dropdown>
+        {trailing}
+      </div>
     </div>
   );
 }

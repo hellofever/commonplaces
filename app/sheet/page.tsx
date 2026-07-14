@@ -9,10 +9,28 @@ import {
   setFavourite,
   updateRestaurantTags,
 } from "@/lib/restaurants";
-import { createTag, fetchTags, type Tag, type TagKind } from "@/lib/tags";
+import { createTag, fetchTags, PHOSPHOR_ICON_MAP, tagColor, tagIcon, type Tag, type TagKind } from "@/lib/tags";
 import { geocodeAddress } from "@/lib/geocode";
 import { useRestaurantUI } from "@/components/AppShell";
 import { BottomSheet } from "@/components/BottomSheet";
+import { Dropdown, dropdownTriggerClass } from "@/components/Dropdown";
+import { ListFilters, matchesFilters, type FilterState } from "@/components/ListFilters";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
 import { TagPicker } from "@/components/TagPicker";
 import { EditableTextCell } from "@/components/sheet/EditableTextCell";
 import { AddressCell } from "@/components/sheet/AddressCell";
@@ -52,6 +70,23 @@ const COLUMNS: { key: SheetColumn; label: string }[] = [
   { key: "notes", label: "Notes" },
 ];
 
+const HIDEABLE_COLUMNS = COLUMNS.filter((col) => col.key !== "name");
+
+const CHECKBOX_COLUMN_WIDTH = 48;
+const MIN_COLUMN_WIDTH = 60;
+const NON_RESIZABLE_COLUMNS = new Set<SheetColumn>(["fav"]);
+const DEFAULT_COLUMN_WIDTHS: Record<SheetColumn, number> = {
+  fav: 48,
+  name: 180,
+  tags: 160,
+  area: 140,
+  city: 100,
+  address: 220,
+  phone: 130,
+  price: 90,
+  notes: 220,
+};
+
 interface TagEditorState {
   restaurant: Restaurant;
   kind: Extract<TagKind, "tag" | "area">;
@@ -71,9 +106,56 @@ export default function SheetPage() {
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [tagEditor, setTagEditor] = useState<TagEditorState | null>(null);
   const [draftName, setDraftName] = useState("");
-  const [contextMenu, setContextMenu] = useState<{ restaurant: Restaurant; x: number; y: number } | null>(
+  const [columnWidths, setColumnWidths] = useState<Record<SheetColumn, number>>(DEFAULT_COLUMN_WIDTHS);
+  const [resizing, setResizing] = useState<{ column: SheetColumn; startX: number; startWidth: number } | null>(
     null
   );
+  const [hiddenColumns, setHiddenColumns] = useState<Set<SheetColumn>>(new Set());
+  const [autoFit, setAutoFit] = useState(false);
+
+  function toggleColumnVisibility(key: SheetColumn) {
+    setHiddenColumns((s) => {
+      const next = new Set(s);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+
+  function showAllColumns() {
+    setHiddenColumns(new Set());
+  }
+
+  function hideAllColumns() {
+    setHiddenColumns(new Set(HIDEABLE_COLUMNS.map((col) => col.key)));
+  }
+
+  useEffect(() => {
+    if (!resizing) return;
+    function onMove(e: MouseEvent) {
+      const next = Math.max(MIN_COLUMN_WIDTH, resizing!.startWidth + (e.clientX - resizing!.startX));
+      setColumnWidths((w) => ({ ...w, [resizing!.column]: next }));
+    }
+    function onUp() {
+      setResizing(null);
+    }
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+    return () => {
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+    };
+  }, [resizing]);
+
+  function startResize(e: React.MouseEvent, column: SheetColumn) {
+    e.preventDefault();
+    e.stopPropagation();
+    setResizing({ column, startX: e.clientX, startWidth: columnWidths[column] });
+  }
 
   const sortParam = searchParams.get("sheetSort");
   const sortColumn: SheetColumn = isSheetColumn(sortParam) ? sortParam : "name";
@@ -89,6 +171,24 @@ export default function SheetPage() {
     router.replace(qs ? `${pathname}?${qs}` : pathname);
   }
 
+  const filters: FilterState = {
+    tagIds: (searchParams.get("tags") ?? "").split(",").filter(Boolean),
+    areaIds: (searchParams.get("areas") ?? "").split(",").filter(Boolean),
+    favouritesOnly: searchParams.get("fav") === "1",
+  };
+
+  function updateFilters(next: FilterState) {
+    const params = new URLSearchParams(searchParams.toString());
+    if (next.tagIds.length > 0) params.set("tags", next.tagIds.join(","));
+    else params.delete("tags");
+    if (next.areaIds.length > 0) params.set("areas", next.areaIds.join(","));
+    else params.delete("areas");
+    if (next.favouritesOnly) params.set("fav", "1");
+    else params.delete("fav");
+    const qs = params.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname);
+  }
+
   async function reload() {
     const data = await fetchRestaurants();
     setRestaurants(data);
@@ -100,8 +200,15 @@ export default function SheetPage() {
   }, [refreshToken]);
 
   const q = query.trim().toLowerCase();
-  const filtered = restaurants.filter((r) => matches(r, q));
+  const filtered = restaurants.filter((r) => matches(r, q) && matchesFilters(r, filters));
   const sorted = [...filtered].sort((a, b) => compareRestaurants(a, b, sortColumn, sortDir));
+  const visibleColumns = COLUMNS.filter((col) => !hiddenColumns.has(col.key));
+  const totalTableWidth =
+    CHECKBOX_COLUMN_WIDTH + visibleColumns.reduce((sum, col) => sum + columnWidths[col.key], 0);
+  // Auto-fit expresses every column as a % of totalTableWidth instead of a literal px
+  // value, so the browser rescales all of them together (keeping their relative
+  // proportions) whenever the window/container resizes -- no JS measurement needed.
+  const colWidth = (px: number) => (autoFit ? `${(px / totalTableWidth) * 100}%` : px);
 
   // Applies one cell edit without reloading/refreshing -- used directly by paste so a
   // multi-cell paste only triggers a single reload at the end, not one per cell.
@@ -192,7 +299,7 @@ export default function SheetPage() {
     const rows = text
       .split(/\r\n|\n|\r/)
       .filter((line, i, arr) => !(i === arr.length - 1 && line === ""));
-    const anchorColIndex = COLUMNS.findIndex((c) => c.key === anchorColumn);
+    const anchorColIndex = visibleColumns.findIndex((c) => c.key === anchorColumn);
 
     for (let ri = 0; ri < rows.length; ri++) {
       const original = sorted[rowIndex + ri];
@@ -203,7 +310,7 @@ export default function SheetPage() {
       const workingRestaurant: Restaurant = { ...original, tags: [...original.tags], areas: [...original.areas] };
       const cells = rows[ri].split("\t");
       for (let ci = 0; ci < cells.length; ci++) {
-        const targetColumn = COLUMNS[anchorColIndex + ci];
+        const targetColumn = visibleColumns[anchorColIndex + ci];
         if (!targetColumn) break;
         await applyCellEdit(workingRestaurant, targetColumn.key, cells[ci]);
       }
@@ -222,10 +329,6 @@ export default function SheetPage() {
     });
   }
 
-  function toggleSelectAll() {
-    setSelectedIds((s) => (s.size === sorted.length ? new Set() : new Set(sorted.map((r) => r.id))));
-  }
-
   async function handleDeleteConfirmed() {
     await deleteRestaurants([...selectedIds]);
     setSelectedIds(new Set());
@@ -234,35 +337,14 @@ export default function SheetPage() {
     refresh();
   }
 
-  function handleRowContextMenu(e: React.MouseEvent, restaurant: Restaurant) {
-    e.preventDefault();
-    setContextMenu({ restaurant, x: e.clientX, y: e.clientY });
-  }
-
   function goToPlace(restaurant: Restaurant) {
-    setContextMenu(null);
     router.push(`/?place=${restaurant.id}`);
   }
 
   function deleteFromContextMenu(restaurant: Restaurant) {
-    setContextMenu(null);
     setSelectedIds(new Set([restaurant.id]));
     setConfirmingDelete(true);
   }
-
-  useEffect(() => {
-    if (!contextMenu) return;
-    const close = () => setContextMenu(null);
-    const closeOnEscape = (e: KeyboardEvent) => e.key === "Escape" && close();
-    document.addEventListener("click", close);
-    document.addEventListener("scroll", close, true);
-    document.addEventListener("keydown", closeOnEscape);
-    return () => {
-      document.removeEventListener("click", close);
-      document.removeEventListener("scroll", close, true);
-      document.removeEventListener("keydown", closeOnEscape);
-    };
-  }, [contextMenu]);
 
   function openTagEditor(restaurant: Restaurant, kind: Extract<TagKind, "tag" | "area">) {
     setTagEditor({
@@ -312,8 +394,21 @@ export default function SheetPage() {
             onClick={() => openTagEditor(r, "tag")}
             className="block w-full truncate px-3 py-2 text-left"
           >
-            {r.tags.map((t) => t.name).join(", ") || (
-              <span className="text-black/30 dark:text-white/30">—</span>
+            {r.tags.length > 0 ? (
+              r.tags.map((t, i) => {
+                const Icon = PHOSPHOR_ICON_MAP[tagIcon(t)];
+                return (
+                  <span key={t.id}>
+                    <span style={{ color: tagColor(t) }}>
+                      {Icon && <Icon size={12} weight="bold" className="mr-0.5 inline-block align-[-2px]" />}
+                      {t.name}
+                    </span>
+                    {i < r.tags.length - 1 && ", "}
+                  </span>
+                );
+              })
+            ) : (
+              <span className="text-black/30 dark:text-white/30">Empty</span>
             )}
           </button>
         );
@@ -325,14 +420,14 @@ export default function SheetPage() {
             className="block w-full truncate px-3 py-2 text-left"
           >
             {r.areas.map((a) => a.name).join(", ") || (
-              <span className="text-black/30 dark:text-white/30">—</span>
+              <span className="text-black/30 dark:text-white/30">Empty</span>
             )}
           </button>
         );
       case "city":
         return (
           <span className="block px-3 py-2 text-black/50 dark:text-white/50">
-            {r.city?.name ?? "—"}
+            {r.city?.name ?? <span className="text-black/30 dark:text-white/30">Empty</span>}
           </span>
         );
       case "address":
@@ -385,43 +480,129 @@ export default function SheetPage() {
   }
 
   return (
-    <div className="flex-1 overflow-auto p-4">
-      {selectedIds.size > 0 && (
-        <div className="mb-2 flex items-center justify-between rounded-lg bg-black/5 px-3 py-2 text-sm dark:bg-white/10">
-          <span>{selectedIds.size} selected</span>
-          <button
-            type="button"
-            onClick={() => setConfirmingDelete(true)}
-            className="flex items-center gap-1.5 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-medium text-white"
-          >
-            <Trash size={14} weight="bold" />
-            Delete
-          </button>
+    <div className="flex flex-1 flex-col overflow-hidden">
+      <div className="flex-none p-4 pb-2">
+        <div className="rounded-lg bg-black/5 px-3 py-2 dark:bg-white/10">
+          <ListFilters
+            value={filters}
+            onChange={updateFilters}
+            className="flex flex-col gap-2"
+            trailing={
+            <div className="flex flex-1 items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <Dropdown
+                  trigger={({ open, toggle }) => (
+                    <button type="button" onClick={toggle} className={dropdownTriggerClass}>
+                      Columns{hiddenColumns.size > 0 ? ` (${hiddenColumns.size} hidden)` : ""}
+                      <span className="text-black/40">{open ? "▲" : "▼"}</span>
+                    </button>
+                  )}
+                >
+                  <div className="flex flex-col gap-1.5">
+                    {HIDEABLE_COLUMNS.map((col) => (
+                      <label
+                        key={col.key}
+                        className="flex items-center gap-2 text-xs text-black/70 dark:text-white/70"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={!hiddenColumns.has(col.key)}
+                          onChange={() => toggleColumnVisibility(col.key)}
+                        />
+                        {col.label}
+                      </label>
+                    ))}
+                  </div>
+                  <div className="mt-2 flex items-center justify-between border-t border-black/10 pt-2 text-xs dark:border-white/10">
+                    <button
+                      type="button"
+                      onClick={showAllColumns}
+                      className="text-black/50 underline dark:text-white/50"
+                    >
+                      Show all
+                    </button>
+                    <button
+                      type="button"
+                      onClick={hideAllColumns}
+                      className="text-black/50 underline dark:text-white/50"
+                    >
+                      Hide all
+                    </button>
+                  </div>
+                </Dropdown>
+                <button
+                  type="button"
+                  onClick={() => setAutoFit((v) => !v)}
+                  title="Keep column widths proportional when the window is resized"
+                  className={`rounded-full border px-3 py-1.5 text-xs font-medium ${
+                    autoFit
+                      ? "border-[#bd5a1f] bg-[#bd5a1f] text-white"
+                      : "border-black/10 text-black/70 dark:border-white/10 dark:text-white/70"
+                  }`}
+                >
+                  Auto-fit
+                </button>
+                <button type="button" className={dropdownTriggerClass}>
+                  Import
+                </button>
+                <button type="button" className={dropdownTriggerClass}>
+                  Sync
+                </button>
+              </div>
+              {selectedIds.size > 0 && (
+                <div className="flex items-center gap-2 text-sm">
+                  <span>{selectedIds.size} selected</span>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmingDelete(true)}
+                    className="flex items-center gap-1.5 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-medium text-white"
+                  >
+                    <Trash size={14} weight="bold" />
+                    Delete
+                  </button>
+                </div>
+              )}
+            </div>
+            }
+          />
         </div>
-      )}
+      </div>
 
-      <table className="w-full min-w-[900px] border-collapse text-sm">
-        <thead>
-          <tr className="border-b border-black/10 text-left text-xs uppercase tracking-wide text-black/50 dark:border-white/10 dark:text-white/50">
-            <th className="px-3 py-2">
-              <input
-                type="checkbox"
-                checked={sorted.length > 0 && selectedIds.size === sorted.length}
-                onChange={toggleSelectAll}
-              />
-            </th>
-            {COLUMNS.map((col) => {
-              const active = col.key === sortColumn;
+      <div className="flex-1 overflow-auto p-4 pt-0">
+        <table
+          className="border-collapse text-sm"
+          style={{ tableLayout: "fixed", width: autoFit ? "100%" : totalTableWidth }}
+        >
+          <colgroup>
+            <col style={{ width: colWidth(CHECKBOX_COLUMN_WIDTH) }} />
+            {visibleColumns.map((col) => (
+              <col key={col.key} style={{ width: colWidth(columnWidths[col.key]) }} />
+            ))}
+          </colgroup>
+          <thead>
+            <tr className="group border-b border-black/10 text-left text-xs uppercase tracking-wide text-black/50 dark:border-white/10 dark:text-white/50">
+              <th className="px-3 py-2" />
+              {visibleColumns.map((col) => {
+                const active = col.key === sortColumn;
               return (
                 <th
                   key={col.key}
                   onClick={() => toggleSort(col.key)}
-                  className={`cursor-pointer select-none px-3 py-2 hover:text-black/80 dark:hover:text-white/80 ${
+                  className={`relative cursor-pointer select-none truncate px-3 py-2 hover:text-black/80 dark:hover:text-white/80 ${
                     active ? "text-black/80 dark:text-white/80" : ""
                   }`}
                 >
-                  {col.label}
+                  {col.key === "fav" ? "" : col.label}
                   {active && <span className="ml-1">{sortDir === "asc" ? "▲" : "▼"}</span>}
+                  {!NON_RESIZABLE_COLUMNS.has(col.key) && (
+                    <div
+                      onMouseDown={(e) => startResize(e, col.key)}
+                      onClick={(e) => e.stopPropagation()}
+                      className={`absolute right-0 top-0 h-full w-1.5 cursor-col-resize select-none bg-black/10 opacity-0 transition-opacity hover:bg-black/30 group-hover:opacity-100 dark:bg-white/10 dark:hover:bg-white/30 ${
+                        resizing?.column === col.key ? "!opacity-100 !bg-black/30 dark:!bg-white/30" : ""
+                      }`}
+                    />
+                  )}
                 </th>
               );
             })}
@@ -429,60 +610,74 @@ export default function SheetPage() {
         </thead>
         <tbody>
           {sorted.map((r, rowIndex) => (
-            <tr
-              key={r.id}
-              onContextMenu={(e) => handleRowContextMenu(e, r)}
-              className="border-b border-black/5 dark:border-white/5 hover:bg-black/[.02] dark:hover:bg-white/5"
-            >
-              <td className="px-3 py-2">
-                <input
-                  type="checkbox"
-                  checked={selectedIds.has(r.id)}
-                  onChange={() => toggleSelect(r.id)}
-                />
-              </td>
-              {COLUMNS.map((col) => (
-                <td
-                  key={col.key}
-                  onPaste={(e) => {
-                    e.preventDefault();
-                    handlePasteGrid(rowIndex, col.key, e.clipboardData.getData("text"));
-                  }}
-                  className="p-0"
-                >
-                  {renderCell(r, col.key)}
-                </td>
-              ))}
-            </tr>
+            <ContextMenu key={r.id}>
+              <ContextMenuTrigger asChild>
+                <tr className="border-b border-black/5 dark:border-white/5 hover:bg-black/[.02] dark:hover:bg-white/5">
+                  <td className="px-3 py-2">
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.has(r.id)}
+                      onChange={() => toggleSelect(r.id)}
+                    />
+                  </td>
+                  {visibleColumns.map((col) => (
+                    <td
+                      key={col.key}
+                      onPaste={(e) => {
+                        e.preventDefault();
+                        handlePasteGrid(rowIndex, col.key, e.clipboardData.getData("text"));
+                      }}
+                      className="p-0"
+                    >
+                      {renderCell(r, col.key)}
+                    </td>
+                  ))}
+                </tr>
+              </ContextMenuTrigger>
+              <ContextMenuContent className="w-48">
+                <ContextMenuItem onSelect={() => goToPlace(r)}>
+                  <MapPin size={16} />
+                  View place on map
+                </ContextMenuItem>
+                <ContextMenuItem variant="destructive" onSelect={() => deleteFromContextMenu(r)}>
+                  <Trash size={16} />
+                  Delete place
+                </ContextMenuItem>
+              </ContextMenuContent>
+            </ContextMenu>
           ))}
 
           <tr className="border-b border-black/5 dark:border-white/5">
             <td className="px-3 py-2" />
-            <td className="px-3 py-2" />
-            <td className="p-0">
-              <div className="flex items-center gap-2 px-3 py-2">
-                <input
-                  value={draftName}
-                  onChange={(e) => setDraftName(e.target.value)}
-                  placeholder="New restaurant…"
-                  className="min-w-0 flex-1 border-b border-dashed border-black/20 bg-transparent py-1 text-sm outline-none dark:border-white/20"
-                />
-                <button
-                  type="button"
-                  onClick={() =>
-                    openAddInline(draftName, () => {
-                      setDraftName("");
-                      reload();
-                    })
-                  }
-                  aria-label="Add restaurant"
-                  className="flex h-6 w-6 flex-none items-center justify-center rounded-full bg-[#bd5a1f] text-white"
-                >
-                  <Plus size={14} weight="bold" />
-                </button>
-              </div>
-            </td>
-            <td colSpan={COLUMNS.length - 2} />
+            {visibleColumns.map((col) =>
+              col.key === "name" ? (
+                <td key={col.key} className="p-0">
+                  <div className="flex items-center gap-2 px-3 py-2">
+                    <input
+                      value={draftName}
+                      onChange={(e) => setDraftName(e.target.value)}
+                      placeholder="New restaurant…"
+                      className="min-w-0 flex-1 border-b border-dashed border-black/20 bg-transparent py-1 text-sm outline-none dark:border-white/20"
+                    />
+                    <button
+                      type="button"
+                      onClick={() =>
+                        openAddInline(draftName, () => {
+                          setDraftName("");
+                          reload();
+                        })
+                      }
+                      aria-label="Add restaurant"
+                      className="flex h-6 w-6 flex-none items-center justify-center rounded-full bg-[#bd5a1f] text-white"
+                    >
+                      <Plus size={14} weight="bold" />
+                    </button>
+                  </div>
+                </td>
+              ) : (
+                <td key={col.key} className="px-3 py-2" />
+              )
+            )}
           </tr>
         </tbody>
       </table>
@@ -492,6 +687,7 @@ export default function SheetPage() {
           No matches for that search.
         </p>
       )}
+      </div>
 
       <BottomSheet open={tagEditor !== null} onClose={closeTagEditor}>
         {tagEditor && (
@@ -505,51 +701,22 @@ export default function SheetPage() {
         )}
       </BottomSheet>
 
-      <BottomSheet open={confirmingDelete} onClose={() => setConfirmingDelete(false)}>
-        <h2 className="mb-2 pr-6 text-lg font-semibold">
-          Delete {selectedIds.size} restaurant{selectedIds.size === 1 ? "" : "s"}?
-        </h2>
-        <p className="mb-4 text-sm text-black/60 dark:text-white/60">This can&apos;t be undone.</p>
-        <div className="flex gap-2">
-          <button
-            onClick={() => setConfirmingDelete(false)}
-            className="flex-1 rounded-lg border border-black/10 py-2 text-sm dark:border-white/10"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleDeleteConfirmed}
-            className="flex-1 rounded-lg bg-red-600 py-2 text-sm font-medium text-white"
-          >
-            Delete
-          </button>
-        </div>
-      </BottomSheet>
-
-      {contextMenu && (
-        <div
-          className="fixed z-40 w-48 overflow-hidden rounded-lg border border-black/10 bg-white py-1 text-sm shadow-lg dark:border-white/10 dark:bg-zinc-900"
-          style={{ top: contextMenu.y, left: contextMenu.x }}
-          onClick={(e) => e.stopPropagation()}
-        >
-          <button
-            type="button"
-            onClick={() => goToPlace(contextMenu.restaurant)}
-            className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-black/[.04] dark:hover:bg-white/5"
-          >
-            <MapPin size={16} />
-            View place on map
-          </button>
-          <button
-            type="button"
-            onClick={() => deleteFromContextMenu(contextMenu.restaurant)}
-            className="flex w-full items-center gap-2 px-3 py-2 text-left text-red-600 hover:bg-black/[.04] dark:hover:bg-white/5"
-          >
-            <Trash size={16} />
-            Delete place
-          </button>
-        </div>
-      )}
+      <AlertDialog open={confirmingDelete} onOpenChange={setConfirmingDelete}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Delete {selectedIds.size} restaurant{selectedIds.size === 1 ? "" : "s"}?
+            </AlertDialogTitle>
+            <AlertDialogDescription>This can&apos;t be undone.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction variant="destructive" onClick={handleDeleteConfirmed}>
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

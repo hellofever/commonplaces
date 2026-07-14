@@ -1,4 +1,16 @@
+import type { ComponentType } from "react";
+import * as PhosphorIcons from "@phosphor-icons/react";
 import { supabase } from "./supabase";
+
+// Loose lookup-by-name so a tag's icon (see TAG_ICONS below) resolves to its component
+// without an import per icon -- PhosphorIcons is typed loosely here because its module
+// namespace mixes icon components with other exports (e.g. IconContext) that don't
+// share the icon component's props shape. Shared by MapView (pin icon), TagPicker (the
+// create-icon swatches), and TagPills (tag pill icon) so there's one lookup, not three.
+export const PHOSPHOR_ICON_MAP = PhosphorIcons as unknown as Record<
+  string,
+  ComponentType<{ size?: number; weight?: string; color?: string; className?: string }>
+>;
 
 export type TagKind = "tag" | "area" | "city";
 

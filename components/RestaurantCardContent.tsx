@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { NavigationArrow, ArrowsOut, PencilSimple, Star, X } from "@phosphor-icons/react";
-import { tagColor } from "@/lib/tags";
+import { PHOSPHOR_ICON_MAP, tagColor, tagIcon } from "@/lib/tags";
 import { setFavourite } from "@/lib/restaurants";
 import { useRestaurantUI } from "./AppShell";
 import type { Restaurant } from "@/lib/types";
@@ -65,15 +65,19 @@ export function RestaurantCardContent({
       </div>
 
       <div className="flex flex-wrap gap-1">
-        {restaurant.tags.map((t) => (
-          <span
-            key={t.id}
-            className="rounded-full border px-2 py-0.5 text-[11px] font-medium"
-            style={{ borderColor: tagColor(t), color: tagColor(t) }}
-          >
-            {t.name}
-          </span>
-        ))}
+        {restaurant.tags.map((t) => {
+          const Icon = PHOSPHOR_ICON_MAP[tagIcon(t)];
+          return (
+            <span
+              key={t.id}
+              className="inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-medium text-white"
+              style={{ background: tagColor(t), borderColor: tagColor(t) }}
+            >
+              {Icon && <Icon size={12} weight="fill" />}
+              {t.name}
+            </span>
+          );
+        })}
         {restaurant.areas.map((a) => (
           <span
             key={a.id}

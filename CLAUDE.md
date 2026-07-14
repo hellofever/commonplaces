@@ -18,9 +18,30 @@ manually.
   negligible cost for <5 users (see Cost, below).
 - **Google Places API (New)** — Text Search + Place Details — powers "search to add."
   Called only from server routes (`app/api/places/*/route.ts`), never from the browser,
-  so the Places key never ships to the client.
+  so the Places key never ships to the client. The routes require a signed-in caller:
+  clients go through `lib/placesApi.ts` (`placesFetch`), which attaches the Supabase
+  session token, verified server-side by `app/api/places/requireUser.ts` — an
+  unauthenticated caller can't burn Places quota.
 - **Auth:** Supabase email/password, tied to the owner's personal email. No magic link,
   no separate login route — `AppShell` shows `LoginForm` inline when there's no session.
+  Sign-in only: there is deliberately no in-app sign-up (RLS grants full write access to
+  any authenticated user, so open sign-up would mean open write access). New accounts
+  are created from the Supabase dashboard, where "Allow new users to sign up" must also
+  stay disabled (the Auth API is reachable with the public anon key regardless of UI).
+- **UI components:** shadcn/ui (Radix-based, CLI v4 "nova" preset) — generated into
+  `components/ui/` (`sheet`, `alert-dialog`, `context-menu`, `button`) with
+  `components.json` + `lib/utils.ts` (`cn`). Adopted for interactive primitives only
+  (sheets/dialogs/menus); plain buttons/inputs stay hand-rolled Tailwind for now. One
+  local deviation from stock shadcn, preserve it when adding components: icons inside
+  `components/ui/*` are swapped from lucide-react (not installed) to Phosphor.
+- **Theme:** `next-themes`, toggled from Settings → Appearance (`components/ThemeToggle.tsx`,
+  opened via the gear icon in `Header`). Drives a `.dark` class on `<html>`
+  (`attribute="class"` in the `ThemeProvider` in `app/layout.tsx`) rather than relying on
+  `prefers-color-scheme` directly — `app/globals.css` has `@custom-variant dark
+  (&:is(.dark *));` (shadcn's normal init default) so `dark:` utilities respond to that
+  class; a freshly `npx shadcn add`-ed component's CSS edits to globals.css must not
+  revert that to a media-query-based variant. "System" still resolves to the same class
+  via `enableSystem`, it isn't a separate code path.
 - **Icons:** `@phosphor-icons/react` — the icon library for the whole app (e.g. the
   Sheet view's favourite star, add/delete/warning icons). Import icons by name (e.g.
   `import { Star, Trash } from "@phosphor-icons/react"`) and set `weight` (`"regular"` |
@@ -32,16 +53,23 @@ manually.
   (server-only Places proxy). No `src/` dir.
 - `components/` — `AppShell` (auth gate + shared `RestaurantUIContext`), `MapView`,
   `AddRestaurantFlow` + `RestaurantForm` + `TagPicker` (shared add/edit flow),
-  `RestaurantDetailView`, `LoginForm`, `BottomSheet`, `Header`.
+  `RestaurantDetailView`, `LoginForm`, `BottomSheet` (thin wrapper over shadcn's Sheet,
+  keeping the pre-shadcn `open`/`onClose` API), `Header` (also owns the Settings sheet),
+  `ThemeToggle` (Light/Dark/System, lives inside Settings).
+- `components/ui/` — shadcn/ui generated components (see UI components in Tech Stack;
+  edited copies, not vendored verbatim).
 - `components/sheet/` — inline-editable cell components used only by the Sheet view
   (`EditableTextCell`, `PriceCell`, `AddressCell`, `FavStar`).
 - `components/ListFilters.tsx` — the List view's tag/area/favourites filter row.
 - `lib/` — `supabase.ts` (client), `restaurants.ts` (fetch/insert/update/delete, tag-join
   normalization), `tags.ts` (tags/area/city taxonomy + palette), `types.ts`, `sort.ts`
   (List sort + area-grouping), `sheetSort.ts` (Sheet column sort/comparators),
-  `geocode.ts` (address → coordinates, reuses the Places search route).
+  `geocode.ts` (address → coordinates, reuses the Places search route), `placesApi.ts`
+  (authed fetch wrapper for the Places routes).
 - `supabase/migrations/` — `0001_init.sql` (schema + seed), `0002_favourites.sql`
-  (`is_favourite` column), `0003_rename_restaurants_tag.sql` (data fix). This *is* the
+  (`is_favourite` column), `0003_rename_restaurants_tag.sql` (data fix),
+  `0004_tag_icons.sql` (per-tag icon column), `0005_replace_restaurant_tags_fn.sql`
+  (transactional tag-replace RPC used by `lib/restaurants.ts`). This *is* the
   schema source of truth — see "What to avoid" for the workflow around it.
 
 ## Data model
@@ -147,6 +175,11 @@ Wireframe: https://claude.ai/code/artifact/b78f30b8-062e-4169-b6c4-0352a6ff8691
   creates a tag on its own. Duplicate detection matches on `google_place_id` before the
   form ever opens.
 
+- **Settings** — gear icon in `Header`, opens a `BottomSheet` with just an Appearance
+  section (`ThemeToggle`: Light/Dark/System) for now. Local `useState` in `Header`, not
+  part of `RestaurantUIContext` — it doesn't need to survive route changes the way the
+  detail/add/edit sheet does.
+
 All three views + the add/edit sheet share one `RestaurantUIContext`
 (`components/AppShell.tsx`), which also owns the auth gate and the refresh-after-save
 signal each page's data fetch listens for.
@@ -203,6 +236,10 @@ signal each page's data fetch listens for.
 - Always ask before deleting anything non-trivial (files, DB rows, migrations).
 - Prefer simple, boring solutions over clever ones — this is a small app for <5 people,
   not a platform.
+- Don't launch the dev server and drive the UI (Playwright/chromium-cli, screenshots,
+  etc.) unless asked — for a simple change, run the build/typecheck and hand it off for
+  the user to try themselves; for a more in-depth or risky change, ask first whether they
+  want you to test it or will verify it themselves, rather than testing automatically.
 
 ## What to avoid
 
@@ -228,6 +265,8 @@ signal each page's data fetch listens for.
 2. Run every file in `supabase/migrations/` against the Supabase project, in order
    (SQL editor or Supabase CLI).
 3. In Google Cloud Console: enable Maps JavaScript API + Places API (New), create a Map ID
-   for Advanced Markers, restrict the two keys as described in `.env.local.example`.
-4. Sign up once from the in-app login form (email/password) — that's the only account
-   flow, no invite system.
+   for Advanced Markers (set it as `NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID`), restrict the two
+   keys as described in `.env.local.example`.
+4. Create each member's account from the Supabase dashboard (Auth → Users → Add user),
+   and keep "Allow new users to sign up" disabled there — the in-app form is sign-in
+   only, no invite system.

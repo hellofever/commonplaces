@@ -8,7 +8,7 @@ import { useState } from "react";
 export function EditableTextCell({
   value,
   onCommit,
-  placeholder = "—",
+  placeholder = "Empty",
 }: {
   value: string;
   onCommit: (next: string) => void;

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { RestaurantForm } from "./RestaurantForm";
 import { suggestTagName } from "@/lib/tags";
 import { findByPlaceId, insertRestaurant, updateRestaurant } from "@/lib/restaurants";
+import { placesFetch } from "@/lib/placesApi";
 import type { Restaurant, RestaurantInput } from "@/lib/types";
 
 interface SearchResult {
@@ -58,11 +59,7 @@ export function AddRestaurantFlow({
     setLoading(true);
     setDuplicate(null);
     try {
-      const res = await fetch("/api/places/search", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query }),
-      });
+      const res = await placesFetch("search", { query });
       const data = await res.json();
       setResults(data.results ?? []);
       setSearched(true);
@@ -81,11 +78,7 @@ export function AddRestaurantFlow({
         return;
       }
 
-      const res = await fetch("/api/places/details", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ placeId: result.placeId }),
-      });
+      const res = await placesFetch("details", { placeId: result.placeId });
       const details = await res.json();
 
       setFormInitial({

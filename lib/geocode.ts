@@ -1,3 +1,5 @@
+import { placesFetch } from "./placesApi";
+
 export interface GeocodeResult {
   lat: number;
   lng: number;
@@ -11,11 +13,7 @@ export interface GeocodeResult {
 export async function geocodeAddress(query: string): Promise<GeocodeResult | null> {
   if (!query.trim()) return null;
 
-  const res = await fetch("/api/places/search", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ query }),
-  });
+  const res = await placesFetch("search", { query });
   if (!res.ok) return null;
 
   const data = await res.json();
