@@ -11,6 +11,7 @@ import {
 } from "@/lib/restaurants";
 import { createTag, fetchTags, PHOSPHOR_ICON_MAP, tagColor, tagIcon, type Tag, type TagKind } from "@/lib/tags";
 import { geocodeAddress } from "@/lib/geocode";
+import { matchesQuery } from "@/lib/search";
 import { useRestaurantUI } from "@/components/AppShell";
 import { BottomSheet } from "@/components/BottomSheet";
 import { Dropdown, dropdownTriggerClass } from "@/components/Dropdown";
@@ -43,20 +44,9 @@ import {
   type SheetColumn,
   type SortDirection,
 } from "@/lib/sheetSort";
-import { MapPin, Plus, Trash } from "@phosphor-icons/react";
+import { DownloadSimple, MapPin, Plus, Trash } from "@phosphor-icons/react";
+import { downloadCsv, restaurantsToCsv } from "@/lib/csv";
 import type { Restaurant } from "@/lib/types";
-
-function matches(r: Restaurant, q: string): boolean {
-  if (!q) return true;
-  const tagNames = [...r.tags, ...r.areas, ...(r.city ? [r.city] : [])].map((t) =>
-    t.name.toLowerCase()
-  );
-  return (
-    r.name.toLowerCase().includes(q) ||
-    r.address.toLowerCase().includes(q) ||
-    tagNames.some((n) => n.includes(q))
-  );
-}
 
 const COLUMNS: { key: SheetColumn; label: string }[] = [
   { key: "fav", label: "Fav" },
@@ -199,8 +189,7 @@ export default function SheetPage() {
     reload().finally(() => setLoading(false));
   }, [refreshToken]);
 
-  const q = query.trim().toLowerCase();
-  const filtered = restaurants.filter((r) => matches(r, q) && matchesFilters(r, filters));
+  const filtered = restaurants.filter((r) => matchesQuery(r, query) && matchesFilters(r, filters));
   const sorted = [...filtered].sort((a, b) => compareRestaurants(a, b, sortColumn, sortDir));
   const visibleColumns = COLUMNS.filter((col) => !hiddenColumns.has(col.key));
   const totalTableWidth =
@@ -335,6 +324,11 @@ export default function SheetPage() {
     setConfirmingDelete(false);
     await reload();
     refresh();
+  }
+
+  function exportCsv() {
+    const date = new Date().toISOString().slice(0, 10);
+    downloadCsv(`restaurants-${date}.csv`, restaurantsToCsv(restaurants));
   }
 
   function goToPlace(restaurant: Restaurant) {
@@ -549,19 +543,25 @@ export default function SheetPage() {
                   Sync
                 </button>
               </div>
-              {selectedIds.size > 0 && (
-                <div className="flex items-center gap-2 text-sm">
-                  <span>{selectedIds.size} selected</span>
-                  <button
-                    type="button"
-                    onClick={() => setConfirmingDelete(true)}
-                    className="flex items-center gap-1.5 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-medium text-white"
-                  >
-                    <Trash size={14} weight="bold" />
-                    Delete
-                  </button>
-                </div>
-              )}
+              <div className="flex items-center gap-2">
+                {selectedIds.size > 0 && (
+                  <div className="flex items-center gap-2 text-sm">
+                    <span>{selectedIds.size} selected</span>
+                    <button
+                      type="button"
+                      onClick={() => setConfirmingDelete(true)}
+                      className="flex items-center gap-1.5 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-medium text-white"
+                    >
+                      <Trash size={14} weight="bold" />
+                      Delete
+                    </button>
+                  </div>
+                )}
+                <button type="button" onClick={exportCsv} className={dropdownTriggerClass}>
+                  <DownloadSimple size={14} weight="bold" className="mr-1 inline-block align-[-2px]" />
+                  Export CSV
+                </button>
+              </div>
             </div>
             }
           />

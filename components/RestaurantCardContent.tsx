@@ -10,9 +10,11 @@ import type { Restaurant } from "@/lib/types";
 export function RestaurantCardContent({
   restaurant,
   onClose,
+  showActions = true,
 }: {
   restaurant: Restaurant;
   onClose?: () => void;
+  showActions?: boolean;
 }) {
   const { openDetail, openEdit, refresh } = useRestaurantUI();
   const [favourite, setFavouriteState] = useState(restaurant.is_favourite);
@@ -40,7 +42,10 @@ export function RestaurantCardContent({
       <div className="flex items-start gap-2">
         <button
           type="button"
-          onClick={handleToggleFavourite}
+          onClick={(e) => {
+            e.stopPropagation();
+            handleToggleFavourite();
+          }}
           disabled={toggling}
           aria-label={favourite ? "Remove from favourites" : "Add to favourites"}
           className="mt-0.5 shrink-0 disabled:opacity-50"
@@ -90,31 +95,33 @@ export function RestaurantCardContent({
 
       <p className="text-xs text-black/60 dark:text-white/60">{restaurant.address}</p>
 
-      <div className="flex gap-1.5">
-        <a
-          href={directionsUrl}
-          target="_blank"
-          rel="noreferrer"
-          className="flex flex-1 flex-col items-center justify-center gap-1 rounded-lg border border-black/10 py-1.5 dark:border-white/10"
-        >
-          <NavigationArrow size={16} weight="bold" />
-          <span className="text-[11px]">Directions</span>
-        </a>
-        <button
-          onClick={() => openDetail(restaurant)}
-          className="flex flex-1 flex-col items-center justify-center gap-1 rounded-lg border border-black/10 py-1.5 dark:border-white/10"
-        >
-          <ArrowsOut size={16} weight="bold" />
-          <span className="text-[11px]">View more</span>
-        </button>
-        <button
-          onClick={() => openEdit(restaurant)}
-          className="flex flex-1 flex-col items-center justify-center gap-1 rounded-lg border border-black/10 py-1.5 dark:border-white/10"
-        >
-          <PencilSimple size={16} weight="bold" />
-          <span className="text-[11px]">Edit place</span>
-        </button>
-      </div>
+      {showActions && (
+        <div className="flex gap-1.5">
+          <a
+            href={directionsUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="flex flex-1 flex-col items-center justify-center gap-1 rounded-lg border border-black/10 py-1.5 dark:border-white/10"
+          >
+            <NavigationArrow size={16} weight="bold" />
+            <span className="text-[11px]">Directions</span>
+          </a>
+          <button
+            onClick={() => openDetail(restaurant)}
+            className="flex flex-1 flex-col items-center justify-center gap-1 rounded-lg border border-black/10 py-1.5 dark:border-white/10"
+          >
+            <ArrowsOut size={16} weight="bold" />
+            <span className="text-[11px]">View more</span>
+          </button>
+          <button
+            onClick={() => openEdit(restaurant)}
+            className="flex flex-1 flex-col items-center justify-center gap-1 rounded-lg border border-black/10 py-1.5 dark:border-white/10"
+          >
+            <PencilSimple size={16} weight="bold" />
+            <span className="text-[11px]">Edit place</span>
+          </button>
+        </div>
+      )}
     </div>
   );
 }

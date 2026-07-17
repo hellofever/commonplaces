@@ -5,23 +5,12 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { MapPin, Trash } from "@phosphor-icons/react";
 import { deleteRestaurants, fetchRestaurants } from "@/lib/restaurants";
 import { tagColor } from "@/lib/tags";
+import { matchesQuery } from "@/lib/search";
 import { useRestaurantUI } from "@/components/AppShell";
 import { BottomSheet } from "@/components/BottomSheet";
 import { ListFilters, matchesFilters, type FilterState } from "@/components/ListFilters";
 import { DEFAULT_SORT, SORT_OPTIONS, groupByArea, isSortKey, sortRestaurants } from "@/lib/sort";
 import type { Restaurant } from "@/lib/types";
-
-function matches(r: Restaurant, q: string): boolean {
-  if (!q) return true;
-  const tagNames = [...r.tags, ...r.areas, ...(r.city ? [r.city] : [])].map((t) =>
-    t.name.toLowerCase()
-  );
-  return (
-    r.name.toLowerCase().includes(q) ||
-    r.address.toLowerCase().includes(q) ||
-    tagNames.some((n) => n.includes(q))
-  );
-}
 
 function RestaurantRow({
   restaurant: r,
@@ -149,8 +138,7 @@ export default function ListPage() {
       .finally(() => setLoading(false));
   }, [refreshToken]);
 
-  const q = query.trim().toLowerCase();
-  const matched = restaurants.filter((r) => matches(r, q) && matchesFilters(r, filters));
+  const matched = restaurants.filter((r) => matchesQuery(r, query) && matchesFilters(r, filters));
   const groupedByArea = sort === "area" ? groupByArea(matched) : null;
   const flat = groupedByArea ? null : sortRestaurants(matched, sort);
 

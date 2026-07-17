@@ -8,9 +8,13 @@ import { fetchRestaurants } from "@/lib/restaurants";
 import { useRestaurantUI } from "./AppShell";
 import { MapControlsDrawer } from "./MapControlsDrawer";
 import { MapBottomCard } from "./MapBottomCard";
+import { matchesFilters } from "./ListFilters";
 import type { Restaurant } from "@/lib/types";
 
 const FOCUS_ZOOM = 17;
+// fitBounds zooms all the way to street level for a single-restaurant match (a
+// zero-area box) -- cap it at roughly suburb scale instead.
+const FIT_MAX_ZOOM = 16;
 
 // Imperatively pans/zooms once both the map instance and the target restaurant are
 // ready -- can't just use a smarter defaultCenter/defaultZoom, since the restaurant
@@ -23,6 +27,32 @@ function FocusOnPlace({ restaurant }: { restaurant: Restaurant | null }) {
     map.panTo({ lat: restaurant.lat, lng: restaurant.lng });
     map.setZoom(FOCUS_ZOOM);
   }, [map, restaurant]);
+  return null;
+}
+
+// Recenters/zooms to fit every currently tag/area-filtered restaurant whenever the
+// active filter set changes -- e.g. picking "Bakery" fits the map to just the
+// bakeries. Keyed off a sorted id string rather than the `restaurants` array itself
+// so it doesn't refire on every render (filtered is a fresh array each time). Skipped
+// entirely when no tag/area filter is active, so clearing filters doesn't yank the
+// viewport back to some default -- it just leaves the map where the user left it.
+function FitToFilter({ active, restaurants }: { active: boolean; restaurants: Restaurant[] }) {
+  const map = useMap();
+  const key = restaurants
+    .map((r) => r.id)
+    .sort()
+    .join(",");
+  useEffect(() => {
+    if (!map || !active || restaurants.length === 0) return;
+    const bounds = new google.maps.LatLngBounds();
+    restaurants.forEach((r) => bounds.extend({ lat: r.lat, lng: r.lng }));
+    map.fitBounds(bounds, 64);
+    const listener = google.maps.event.addListenerOnce(map, "bounds_changed", () => {
+      if ((map.getZoom() ?? 0) > FIT_MAX_ZOOM) map.setZoom(FIT_MAX_ZOOM);
+    });
+    return () => google.maps.event.removeListener(listener);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map, active, key]);
   return null;
 }
 
@@ -80,11 +110,13 @@ function MapExpandButton({
 }
 
 export function MapView({
-  query,
   focusPlaceId,
+  tagIds = [],
+  areaIds = [],
 }: {
-  query: string;
   focusPlaceId?: string | null;
+  tagIds?: string[];
+  areaIds?: string[];
 }) {
   const { refreshToken } = useRestaurantUI();
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
@@ -117,18 +149,9 @@ export function MapView({
     ? (restaurants.find((r) => r.id === selectedId) ?? null)
     : null;
 
-  const q = query.trim().toLowerCase();
-  const filtered = restaurants.filter((r) => {
-    if (!q) return true;
-    const tagNames = [...r.tags, ...r.areas, ...(r.city ? [r.city] : [])].map((t) =>
-      t.name.toLowerCase()
-    );
-    return (
-      r.name.toLowerCase().includes(q) ||
-      r.address.toLowerCase().includes(q) ||
-      tagNames.some((n) => n.includes(q))
-    );
-  });
+  const filtered = restaurants.filter((r) =>
+    matchesFilters(r, { tagIds, areaIds, favouritesOnly: false })
+  );
 
   const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
   if (!apiKey) {
@@ -163,6 +186,7 @@ export function MapView({
             mapTypeControl={false}
             onClick={() => setSelectedId(null)}
           >
+            <FitToFilter active={tagIds.length > 0 || areaIds.length > 0} restaurants={filtered} />
             <FocusOnPlace restaurant={focusedRestaurant} />
             {filtered.map((r) => (
               <RestaurantMarker

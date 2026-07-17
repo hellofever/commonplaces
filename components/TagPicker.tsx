@@ -18,6 +18,7 @@ export function TagPicker({
   selectedIds,
   onChange,
   initialQuery,
+  allowCreate = true,
 }: {
   kind: TagKind;
   label: string;
@@ -25,6 +26,7 @@ export function TagPicker({
   selectedIds: string[];
   onChange: (ids: string[]) => void;
   initialQuery?: string;
+  allowCreate?: boolean;
 }) {
   const [options, setOptions] = useState<Tag[]>([]);
   const [showCreate, setShowCreate] = useState(!!initialQuery);
@@ -65,7 +67,7 @@ export function TagPicker({
 
       <div className="flex flex-wrap gap-1.5">
         <TagPills kind={kind} options={options} selectedIds={selectedIds} onToggle={toggle} />
-        {!showCreate && (
+        {allowCreate && !showCreate && (
           <button
             type="button"
             onClick={() => setShowCreate(true)}
