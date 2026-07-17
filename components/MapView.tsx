@@ -9,8 +9,18 @@ import { MapControlsDrawer } from "./MapControlsDrawer";
 import { MapBottomCard } from "./MapBottomCard";
 import { matchesFilters } from "./ListFilters";
 import type { Restaurant } from "@/lib/types";
+import type { Destination } from "@/lib/destinations";
 
 const FOCUS_ZOOM = 17;
+// Fixed recenter zoom on a destination switch -- a bit wider than a single-restaurant
+// focus so a whole city reads reasonably, though a country-sized destination (e.g.
+// "Mexico") will still look too zoomed-in at this level. Getting that right needs
+// Google's viewport bounds (not just a point), which isn't stored yet -- see the
+// destinations table/Places search route if this becomes worth fixing properly.
+const DESTINATION_ZOOM = 11;
+// Type-safety fallback only -- AuthenticatedShell (see AppShell.tsx) never renders
+// MapView until activeDestination has resolved, so this never actually surfaces.
+const FALLBACK_CENTER = { lat: -33.8688, lng: 151.2093 };
 // Wider than FOCUS_ZOOM -- centering on the user shouldn't snap in as tight as
 // focusing a single restaurant pin, it should still show the surrounding area.
 const LOCATE_ZOOM = 14;
@@ -25,10 +35,29 @@ const FIT_MAX_ZOOM = 16;
 function FocusOnPlace({ restaurant }: { restaurant: Restaurant | null }) {
   const map = useMap();
   useEffect(() => {
-    if (!map || !restaurant) return;
+    if (!map || !restaurant || restaurant.lat == null || restaurant.lng == null) return;
     map.panTo({ lat: restaurant.lat, lng: restaurant.lng });
     map.setZoom(FOCUS_ZOOM);
   }, [map, restaurant]);
+  return null;
+}
+
+// Recenters when the active destination actually changes (switching from the switcher,
+// not the initial mount -- defaultCenter/defaultZoom on <Map> already placed it there,
+// see MapView below).
+function RecenterOnDestinationChange({ destination }: { destination: Destination }) {
+  const map = useMap();
+  const isFirst = useRef(true);
+  useEffect(() => {
+    if (isFirst.current) {
+      isFirst.current = false;
+      return;
+    }
+    if (!map || destination.lat == null || destination.lng == null) return;
+    map.panTo({ lat: destination.lat, lng: destination.lng });
+    map.setZoom(DESTINATION_ZOOM);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map, destination.id]);
   return null;
 }
 
@@ -38,7 +67,7 @@ function FocusOnPlace({ restaurant }: { restaurant: Restaurant | null }) {
 // so it doesn't refire on every render (filtered is a fresh array each time). Skipped
 // entirely when no tag/area filter is active, so clearing filters doesn't yank the
 // viewport back to some default -- it just leaves the map where the user left it.
-function FitToFilter({ active, restaurants }: { active: boolean; restaurants: Restaurant[] }) {
+function FitToFilter({ active, restaurants }: { active: boolean; restaurants: GeoRestaurant[] }) {
   const map = useMap();
   const key = restaurants
     .map((r) => r.id)
@@ -58,11 +87,20 @@ function FitToFilter({ active, restaurants }: { active: boolean; restaurants: Re
   return null;
 }
 
+// Restaurants without a resolved location never reach this component or FitToFilter --
+// see the `geoTagged` filter in MapView, which narrows to this type so lat/lng can stay
+// non-null here without runtime assertions.
+type GeoRestaurant = Restaurant & { lat: number; lng: number };
+
+function isGeoTagged(r: Restaurant): r is GeoRestaurant {
+  return r.lat != null && r.lng != null;
+}
+
 function RestaurantMarker({
   restaurant,
   onSelect,
 }: {
-  restaurant: Restaurant;
+  restaurant: GeoRestaurant;
   onSelect: (restaurant: Restaurant) => void;
 }) {
   const map = useMap();
@@ -191,14 +229,16 @@ function UserLocationMarker({ position }: { position: { lat: number; lng: number
 
 export function MapView({
   focusPlaceId,
+  typeIds = [],
   tagIds = [],
   areaIds = [],
 }: {
   focusPlaceId?: string | null;
+  typeIds?: string[];
   tagIds?: string[];
   areaIds?: string[];
 }) {
-  const { restaurants, restaurantsError, syncRestaurants } = useRestaurantUI();
+  const { restaurants, restaurantsError, syncRestaurants, activeDestination } = useRestaurantUI();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const centerBeforeResize = useRef<google.maps.LatLng | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -216,8 +256,9 @@ export function MapView({
     : null;
 
   const filtered = restaurants.filter((r) =>
-    matchesFilters(r, { tagIds, areaIds, favouritesOnly: false })
+    matchesFilters(r, { typeIds, tagIds, areaIds, favouritesOnly: false })
   );
+  const geoTagged = filtered.filter(isGeoTagged);
 
   const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
   if (!apiKey) {
@@ -242,8 +283,12 @@ export function MapView({
           )}
           <Map
             className="h-full w-full"
-            defaultCenter={{ lat: -33.8688, lng: 151.2093 }}
-            defaultZoom={12}
+            defaultCenter={
+              activeDestination?.lat != null && activeDestination?.lng != null
+                ? { lat: activeDestination.lat, lng: activeDestination.lng }
+                : FALLBACK_CENTER
+            }
+            defaultZoom={DESTINATION_ZOOM}
             mapId={process.env.NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID || "7a03f40461f9aed667a8cf4f"}
             gestureHandling="greedy"
             mapTypeControl={false}
@@ -254,9 +299,13 @@ export function MapView({
             cameraControl={false}
             onClick={() => setSelectedId(null)}
           >
-            <FitToFilter active={tagIds.length > 0 || areaIds.length > 0} restaurants={filtered} />
+            <FitToFilter
+              active={typeIds.length > 0 || tagIds.length > 0 || areaIds.length > 0}
+              restaurants={geoTagged}
+            />
+            {activeDestination && <RecenterOnDestinationChange destination={activeDestination} />}
             <FocusOnPlace restaurant={focusedRestaurant} />
-            {filtered.map((r) => (
+            {geoTagged.map((r) => (
               <RestaurantMarker
                 key={r.id}
                 restaurant={r}

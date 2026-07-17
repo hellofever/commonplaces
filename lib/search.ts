@@ -5,12 +5,10 @@ import type { Restaurant } from "./types";
 export function matchesQuery(r: Restaurant, query: string): boolean {
   const q = query.trim().toLowerCase();
   if (!q) return true;
-  const tagNames = [...r.tags, ...r.areas, ...(r.city ? [r.city] : [])].map((t) =>
-    t.name.toLowerCase()
-  );
+  const tagNames = [...r.types, ...r.tags, ...r.areas].map((t) => t.name.toLowerCase());
   return (
     r.name.toLowerCase().includes(q) ||
-    r.address.toLowerCase().includes(q) ||
+    (r.address ?? "").toLowerCase().includes(q) ||
     tagNames.some((n) => n.includes(q))
   );
 }

@@ -7,8 +7,8 @@ import { PHOSPHOR_ICON_MAP, tagColor, tagIcon, type Tag, type TagKind } from "@/
 // row -- shared by the Filters dropdown (ListFilters) and the add/edit form's
 // TagPicker so tag/area selection behaves and looks identical everywhere. Tags get
 // their own assigned color plus the same icon used on the map pin (a little bigger to
-// fit it, same pill shape otherwise); area/city pills are monochrome, icon-less, since
-// neither carries a real color (see lib/tags.ts, tagColor's null fallback).
+// fit it, same pill shape otherwise); area pills are monochrome, icon-less, since they
+// don't carry a real color (see lib/tags.ts, tagColor's null fallback).
 export function TagPills({
   kind,
   options,
@@ -24,7 +24,7 @@ export function TagPills({
     <>
       {options.map((t) => {
         const active = selectedIds.includes(t.id);
-        if (kind === "tag") {
+        if (kind === "type") {
           const Icon = PHOSPHOR_ICON_MAP[tagIcon(t)];
           return (
             <button

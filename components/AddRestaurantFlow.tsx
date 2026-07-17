@@ -2,11 +2,12 @@
 
 import { useState } from "react";
 import { RestaurantForm } from "./RestaurantForm";
+import { useRestaurantUI } from "./AppShell";
 import { suggestTagName } from "@/lib/tags";
 import { findByPlaceId, insertRestaurant, updateRestaurant } from "@/lib/restaurants";
 import { linkPendingPhotos } from "@/lib/photos";
 import { placesFetch } from "@/lib/placesApi";
-import type { Restaurant, RestaurantInput } from "@/lib/types";
+import type { Restaurant, RestaurantFormValues } from "@/lib/types";
 
 interface SearchResult {
   placeId: string;
@@ -14,7 +15,7 @@ interface SearchResult {
   address: string;
 }
 
-function toFormInitial(restaurant: Restaurant): Partial<RestaurantInput> {
+function toFormInitial(restaurant: Restaurant): Partial<RestaurantFormValues> {
   return {
     name: restaurant.name,
     address: restaurant.address,
@@ -28,9 +29,9 @@ function toFormInitial(restaurant: Restaurant): Partial<RestaurantInput> {
     notes: restaurant.notes,
     photo_url: restaurant.photo_url,
     primary_tag_id: restaurant.primary_tag_id,
+    typeIds: restaurant.types.map((t) => t.id),
     tagIds: restaurant.tags.map((t) => t.id),
     areaIds: restaurant.areas.map((t) => t.id),
-    cityId: restaurant.city?.id ?? null,
   };
 }
 
@@ -43,12 +44,13 @@ export function AddRestaurantFlow({
   onSaved: (restaurant: Restaurant) => void;
   initialQuery?: string;
 }) {
+  const { activeDestinationId } = useRestaurantUI();
   const [step, setStep] = useState<"search" | "results" | "form">(editing ? "form" : "search");
   const [query, setQuery] = useState(initialQuery ?? "");
   const [results, setResults] = useState<SearchResult[]>([]);
   const [searched, setSearched] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [formInitial, setFormInitial] = useState<Partial<RestaurantInput>>(
+  const [formInitial, setFormInitial] = useState<Partial<RestaurantFormValues>>(
     editing ? toFormInitial(editing) : {}
   );
   const [suggestedTagName, setSuggestedTagName] = useState<string | null>(null);
@@ -92,9 +94,9 @@ export function AddRestaurantFlow({
         price_level: details.priceLevel,
         opening_hours: details.openingHours,
         google_place_id: details.placeId,
+        typeIds: [],
         tagIds: [],
         areaIds: [],
-        cityId: null,
       });
       setSuggestedTagName(suggestTagName(details.primaryType));
       setStep("form");
@@ -109,10 +111,11 @@ export function AddRestaurantFlow({
     setStep("form");
   }
 
-  async function handleSave(values: RestaurantInput, pendingPhotoPaths: string[]): Promise<Restaurant> {
-    const saved = editing
-      ? await updateRestaurant(editing.id, values)
-      : await insertRestaurant(values);
+  async function handleSave(values: RestaurantFormValues, pendingPhotoPaths: string[]): Promise<Restaurant> {
+    const destinationId = editing ? editing.destination_id : activeDestinationId;
+    if (!destinationId) throw new Error("No active destination to save this restaurant under.");
+    const input = { ...values, destination_id: destinationId };
+    const saved = editing ? await updateRestaurant(editing.id, input) : await insertRestaurant(input);
     if (pendingPhotoPaths.length) {
       await linkPendingPhotos(saved.id, pendingPhotoPaths);
     }
@@ -122,8 +125,8 @@ export function AddRestaurantFlow({
 
   if (duplicate) {
     return (
-      <div className="flex flex-col gap-3 pr-6">
-        <h2 className="text-lg font-semibold">Already on your list</h2>
+      <div className="flex flex-col gap-3">
+        <h2 className="pr-8 text-lg font-semibold">Already on your list</h2>
         <p className="text-sm text-black/70 dark:text-white/70">
           <b>{duplicate.name}</b> is already saved.
         </p>
@@ -144,7 +147,7 @@ export function AddRestaurantFlow({
   if (step === "form") {
     return (
       <>
-        <h2 className="mb-3 pr-6 text-lg font-semibold">
+        <h2 className="mb-3 pr-8 text-lg font-semibold">
           {editing ? "Edit restaurant" : "Add restaurant"}
         </h2>
         <RestaurantForm
@@ -158,8 +161,8 @@ export function AddRestaurantFlow({
   }
 
   return (
-    <div className="flex flex-col gap-3 pr-6">
-      <h2 className="text-lg font-semibold">Add restaurant</h2>
+    <div className="flex flex-col gap-3">
+      <h2 className="pr-8 text-lg font-semibold">Add restaurant</h2>
       <form onSubmit={runSearch} className="flex gap-2">
         <input
           autoFocus

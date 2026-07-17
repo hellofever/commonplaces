@@ -20,7 +20,10 @@ export function RestaurantCardContent({
   const [favourite, setFavouriteState] = useState(restaurant.is_favourite);
   const [toggling, setToggling] = useState(false);
 
-  const directionsUrl = `https://www.google.com/maps/dir/?api=1&destination=${restaurant.lat},${restaurant.lng}`;
+  const directionsUrl =
+    restaurant.lat != null && restaurant.lng != null
+      ? `https://www.google.com/maps/dir/?api=1&destination=${restaurant.lat},${restaurant.lng}`
+      : null;
 
   async function handleToggleFavourite() {
     const next = !favourite;
@@ -69,8 +72,8 @@ export function RestaurantCardContent({
         )}
       </div>
 
-      <div className="flex flex-wrap gap-1">
-        {restaurant.tags.map((t) => {
+      <div className="flex flex-wrap items-center gap-1">
+        {restaurant.types.map((t) => {
           const Icon = PHOSPHOR_ICON_MAP[tagIcon(t)];
           return (
             <span
@@ -83,29 +86,41 @@ export function RestaurantCardContent({
             </span>
           );
         })}
+        {restaurant.tags.map((t) => (
+          <span
+            key={t.id}
+            className="inline-flex items-center gap-1 rounded-full border border-black/15 px-2.5 py-1 text-[11px] font-medium text-black/60 dark:border-white/15 dark:text-white/60"
+          >
+            {t.name}
+          </span>
+        ))}
         {restaurant.areas.map((a) => (
           <span
             key={a.id}
-            className="rounded-full border border-black/15 px-2 py-0.5 text-[11px] text-black/60 dark:border-white/15 dark:text-white/60"
+            className="inline-flex items-center gap-1 rounded-full border border-black/15 px-2.5 py-1 text-[11px] font-medium text-black/60 dark:border-white/15 dark:text-white/60"
           >
             {a.name}
           </span>
         ))}
       </div>
 
-      <p className="text-xs text-black/60 dark:text-white/60">{restaurant.address}</p>
+      {restaurant.address && (
+        <p className="text-xs text-black/60 dark:text-white/60">{restaurant.address}</p>
+      )}
 
       {showActions && (
         <div className="flex gap-1.5">
-          <a
-            href={directionsUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="flex flex-1 flex-col items-center justify-center gap-1 rounded-lg border border-black/10 py-1.5 dark:border-white/10"
-          >
-            <NavigationArrow size={16} weight="bold" />
-            <span className="text-[11px]">Directions</span>
-          </a>
+          {directionsUrl && (
+            <a
+              href={directionsUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="flex flex-1 flex-col items-center justify-center gap-1 rounded-lg border border-black/10 py-1.5 dark:border-white/10"
+            >
+              <NavigationArrow size={16} weight="bold" />
+              <span className="text-[11px]">Directions</span>
+            </a>
+          )}
           <button
             onClick={() => openDetail(restaurant)}
             className="flex flex-1 flex-col items-center justify-center gap-1 rounded-lg border border-black/10 py-1.5 dark:border-white/10"

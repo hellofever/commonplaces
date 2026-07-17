@@ -30,12 +30,13 @@ const searchInputClass =
 export function MapSearchExpand() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { tags, areas, restaurants } = useRestaurantUI();
+  const { types, tags, areas, restaurants } = useRestaurantUI();
   const [value, setValue] = useState("");
   const [expanded, setExpanded] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
 
+  const typeIds = (searchParams.get("types") ?? "").split(",").filter(Boolean);
   const tagIds = (searchParams.get("tags") ?? "").split(",").filter(Boolean);
   const areaIds = (searchParams.get("areas") ?? "").split(",").filter(Boolean);
 
@@ -59,7 +60,7 @@ export function MapSearchExpand() {
     return () => document.removeEventListener("click", handleClick);
   }, [expanded]);
 
-  function updateIds(key: "tags" | "areas", ids: string[]) {
+  function updateIds(key: "types" | "tags" | "areas", ids: string[]) {
     const params = new URLSearchParams(searchParams.toString());
     if (ids.length > 0) params.set(key, ids.join(","));
     else params.delete(key);
@@ -77,12 +78,14 @@ export function MapSearchExpand() {
 
   const results = value.trim() ? restaurants.filter((r) => matchesQuery(r, value)) : [];
 
-  const activeCount = tagIds.length + areaIds.length;
+  const activeCount = typeIds.length + tagIds.length + areaIds.length;
   const summary =
     activeCount === 0
       ? null
       : activeCount === 1
-        ? ([...tags, ...areas].find((t) => t.id === (tagIds[0] ?? areaIds[0]))?.name ?? null)
+        ? ([...types, ...tags, ...areas].find(
+            (t) => t.id === (typeIds[0] ?? tagIds[0] ?? areaIds[0])
+          )?.name ?? null)
         : "Multiple tags selected";
   const placeholder = expanded ? "Search restaurants…" : (summary ?? "Search restaurants…");
 
@@ -110,7 +113,16 @@ export function MapSearchExpand() {
   ) : (
     <div className="flex flex-col gap-4">
       <TagPicker
-        kind="tag"
+        kind="type"
+        label="Filter by type"
+        multiple
+        allowCreate={false}
+        selectedIds={typeIds}
+        onChange={(ids) => updateIds("types", ids)}
+        resetLabel="Reset types"
+      />
+      <TagPicker
+        kind="tags"
         label="Filter by tag"
         multiple
         allowCreate={false}

@@ -1,7 +1,18 @@
 import { formatPriceLevel } from "./sheetSort";
 import type { Restaurant } from "./types";
 
-const CSV_HEADERS = ["Fav", "Name", "Tags", "Area", "City", "Address", "Phone", "Price", "Notes"];
+const CSV_HEADERS = [
+  "Fav",
+  "Name",
+  "Type",
+  "Tags",
+  "Area",
+  "Address",
+  "Phone",
+  "Price",
+  "Notes",
+  "Added",
+];
 
 function escapeCsvField(value: string): string {
   if (/[",\n]/.test(value)) return `"${value.replace(/"/g, '""')}"`;
@@ -12,13 +23,14 @@ function restaurantToRow(r: Restaurant): string[] {
   return [
     r.is_favourite ? "Yes" : "No",
     r.name,
+    r.types.map((t) => t.name).join(", "),
     r.tags.map((t) => t.name).join(", "),
     r.areas.map((a) => a.name).join(", "),
-    r.city?.name ?? "",
-    r.address,
+    r.address ?? "",
     r.phone ?? "",
     formatPriceLevel(r.price_level),
     r.notes ?? "",
+    new Date(r.created_at).toLocaleDateString(),
   ];
 }
 

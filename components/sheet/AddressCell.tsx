@@ -9,17 +9,17 @@ export function AddressCell({
   onCommit,
   onClickReview,
 }: {
-  value: string;
+  value: string | null;
   needsReview: boolean;
   onCommit: (next: string) => void;
   onClickReview: () => void;
 }) {
   const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(value);
+  const [draft, setDraft] = useState(value ?? "");
 
   function commit(finalValue: string) {
     setEditing(false);
-    if (finalValue !== value) onCommit(finalValue);
+    if (finalValue !== (value ?? "")) onCommit(finalValue);
   }
 
   if (editing) {
@@ -34,7 +34,7 @@ export function AddressCell({
             e.preventDefault();
             commit(draft);
           } else if (e.key === "Escape") {
-            setDraft(value);
+            setDraft(value ?? "");
             setEditing(false);
           }
         }}
@@ -48,7 +48,7 @@ export function AddressCell({
       <button
         type="button"
         onClick={() => {
-          setDraft(value);
+          setDraft(value ?? "");
           setEditing(true);
         }}
         className="min-w-0 flex-1 truncate text-left"

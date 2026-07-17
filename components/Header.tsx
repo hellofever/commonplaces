@@ -8,6 +8,7 @@ import { BottomSheet } from "./BottomSheet";
 import { ThemeToggle } from "./ThemeToggle";
 import { DataSyncSettings } from "./DataSyncSettings";
 import { MapSearchExpand } from "./MapSearchExpand";
+import { DestinationSwitcher } from "./DestinationSwitcher";
 
 const TABS = [
   { href: "/", label: "Map" },
@@ -20,6 +21,7 @@ export function Header({ onAdd }: { onAdd: () => void }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const q = searchParams.get("q") ?? "";
+  const destination = searchParams.get("destination") ?? "";
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
 
@@ -31,8 +33,14 @@ export function Header({ onAdd }: { onAdd: () => void }) {
     router.replace(qs ? `${pathname}?${qs}` : pathname);
   }
 
+  // Unlike q/tags/areas (deliberately view-scoped, see AGENTS.md's UI structure notes),
+  // destination is global app state and must survive every tab switch.
   function tabHref(href: string) {
-    return q ? `${href}?q=${encodeURIComponent(q)}` : href;
+    const params = new URLSearchParams();
+    if (q) params.set("q", q);
+    if (destination) params.set("destination", destination);
+    const qs = params.toString();
+    return qs ? `${href}?${qs}` : href;
   }
 
   return (
@@ -65,6 +73,7 @@ export function Header({ onAdd }: { onAdd: () => void }) {
       <div className="hidden md:flex md:flex-wrap md:items-center md:gap-3">
         <div className="flex items-center gap-4">
           <span className="text-lg font-semibold tracking-tight">CP Places</span>
+          <DestinationSwitcher />
           <nav className="flex items-center gap-1 text-sm">
             {TABS.map((tab) => {
               const active = pathname === tab.href;
@@ -116,7 +125,10 @@ export function Header({ onAdd }: { onAdd: () => void }) {
       </div>
 
       <BottomSheet open={menuOpen} onClose={() => setMenuOpen(false)}>
-        <h2 className="text-lg font-semibold">CP Places</h2>
+        <div className="flex items-center gap-3">
+          <h2 className="text-lg font-semibold">CP Places</h2>
+          <DestinationSwitcher beforeOpenCreate={() => setMenuOpen(false)} />
+        </div>
         <nav className="mt-4 flex flex-col gap-1 text-sm">
           {TABS.map((tab) => {
             const active = pathname === tab.href;

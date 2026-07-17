@@ -37,7 +37,13 @@ function RestaurantRow({
           {r.name}
         </span>
         <span className="block truncate text-xs text-black/50 dark:text-white/50">
-          {[...r.areas.map((a) => a.name), ...r.tags.map((t) => t.name), r.website, r.notes]
+          {[
+            ...r.areas.map((a) => a.name),
+            ...r.types.map((t) => t.name),
+            ...r.tags.map((t) => t.name),
+            r.website,
+            r.notes,
+          ]
             .filter(Boolean)
             .join(" · ") || r.address}
         </span>
@@ -95,6 +101,7 @@ export default function ListPage() {
   }, [contextMenu]);
 
   const filters: FilterState = {
+    typeIds: (searchParams.get("types") ?? "").split(",").filter(Boolean),
     tagIds: (searchParams.get("tags") ?? "").split(",").filter(Boolean),
     areaIds: (searchParams.get("areas") ?? "").split(",").filter(Boolean),
     favouritesOnly: searchParams.get("fav") === "1",
@@ -102,6 +109,8 @@ export default function ListPage() {
 
   function updateFilters(next: FilterState) {
     const params = new URLSearchParams(searchParams.toString());
+    if (next.typeIds.length > 0) params.set("types", next.typeIds.join(","));
+    else params.delete("types");
     if (next.tagIds.length > 0) params.set("tags", next.tagIds.join(","));
     else params.delete("tags");
     if (next.areaIds.length > 0) params.set("areas", next.areaIds.join(","));

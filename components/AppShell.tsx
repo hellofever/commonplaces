@@ -1,10 +1,12 @@
 "use client";
 
 import { createContext, useContext, useEffect, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type { Session } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
 import { fetchRestaurants } from "@/lib/restaurants";
 import { fetchTags, type Tag } from "@/lib/tags";
+import { fetchDestinations, type Destination } from "@/lib/destinations";
 import type { Restaurant } from "@/lib/types";
 import { Header } from "./Header";
 import { BottomSheet } from "./BottomSheet";
@@ -31,18 +33,28 @@ interface RestaurantUIContextValue {
   // Cached data, loaded once at login and kept in sync via cache patches + Realtime
   // invalidation (see AuthenticatedShell below) rather than refetched by each consumer.
   restaurants: Restaurant[];
+  types: Tag[];
   tags: Tag[];
   areas: Tag[];
-  cities: Tag[];
   restaurantsError: boolean;
   tagsError: boolean;
   lastSyncedAt: Date | null;
+
+  // Destinations scope the whole app -- restaurants are fetched filtered to
+  // activeDestinationId (see fetchRestaurants), not client-side. activeDestinationId
+  // is driven by the ?destination= URL param (see the effects below), so it stays
+  // shareable and survives reloads/navigation the same way ?q=/?tags= do.
+  destinations: Destination[];
+  activeDestinationId: string | null;
+  activeDestination: Destination | null;
+  destinationsError: boolean;
 
   // Force a full refetch of a domain -- used by Settings' "Sync now" button and by
   // Realtime event handlers. Falls back to serving stale cached data on failure.
   syncNow: () => Promise<void>;
   syncRestaurants: () => Promise<void>;
   syncTags: () => Promise<void>;
+  syncDestinations: () => Promise<void>;
 
   // Patch the cache directly from a mutation's own return value/known new state --
   // the default path after a create/update/delete, so most mutations don't need a
@@ -50,6 +62,7 @@ interface RestaurantUIContextValue {
   patchRestaurantCache: (restaurant: Restaurant) => void;
   removeRestaurantsCache: (ids: string[]) => void;
   patchTagCache: (tag: Tag) => void;
+  patchDestinationCache: (destination: Destination) => void;
 }
 
 const RestaurantUIContext = createContext<RestaurantUIContextValue | null>(null);
@@ -75,6 +88,18 @@ function upsertByIdSortedByName<T extends { id: string; name: string }>(list: T[
   return next;
 }
 
+// Destinations sort oldest-first (not alphabetically) so the original/default
+// destination stays first -- see activeDestinationId's fallback below.
+function upsertByIdSortedByCreatedAt<T extends { id: string; created_at: string }>(
+  list: T[],
+  item: T
+): T[] {
+  const next = list.filter((x) => x.id !== item.id);
+  next.push(item);
+  next.sort((a, b) => a.created_at.localeCompare(b.created_at));
+  return next;
+}
+
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null | undefined>(undefined);
 
@@ -97,19 +122,33 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
 function AuthenticatedShell({ children }: { children: React.ReactNode }) {
   const [sheet, setSheet] = useState<SheetState>(null);
+  const pathname = usePathname();
+  const router = useRouter();
+  const searchParams = useSearchParams();
 
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
+  const [types, setTypes] = useState<Tag[]>([]);
   const [tags, setTags] = useState<Tag[]>([]);
   const [areas, setAreas] = useState<Tag[]>([]);
-  const [cities, setCities] = useState<Tag[]>([]);
+  const [destinations, setDestinations] = useState<Destination[]>([]);
   const [restaurantsError, setRestaurantsError] = useState(false);
   const [tagsError, setTagsError] = useState(false);
+  const [destinationsError, setDestinationsError] = useState(false);
   const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
+  // Two-stage bootstrap: destinations+tags load first (no destination dependency), then
+  // restaurants load once activeDestinationId is resolved from them -- see the effects
+  // below. initialLoadDone only flips once both stages have completed at least once.
+  const [destinationsAndTagsLoaded, setDestinationsAndTagsLoaded] = useState(false);
   const [initialLoadDone, setInitialLoadDone] = useState(false);
 
+  const destinationParam = searchParams.get("destination");
+  const activeDestinationId = destinationParam ?? destinations[0]?.id ?? null;
+  const activeDestination = destinations.find((d) => d.id === activeDestinationId) ?? null;
+
   async function syncRestaurants() {
+    if (!activeDestinationId) return;
     try {
-      const data = await fetchRestaurants();
+      const data = await fetchRestaurants(activeDestinationId);
       setRestaurants(data);
       setRestaurantsError(false);
       setLastSyncedAt(new Date());
@@ -121,10 +160,10 @@ function AuthenticatedShell({ children }: { children: React.ReactNode }) {
 
   async function syncTags() {
     try {
-      const [t, a, c] = await Promise.all([fetchTags("tag"), fetchTags("area"), fetchTags("city")]);
-      setTags(t);
+      const [ty, ta, a] = await Promise.all([fetchTags("type"), fetchTags("tags"), fetchTags("area")]);
+      setTypes(ty);
+      setTags(ta);
       setAreas(a);
-      setCities(c);
       setTagsError(false);
       setLastSyncedAt(new Date());
     } catch (err) {
@@ -133,8 +172,20 @@ function AuthenticatedShell({ children }: { children: React.ReactNode }) {
     }
   }
 
+  async function syncDestinations() {
+    try {
+      const data = await fetchDestinations();
+      setDestinations(data);
+      setDestinationsError(false);
+      setLastSyncedAt(new Date());
+    } catch (err) {
+      console.error(err);
+      setDestinationsError(true);
+    }
+  }
+
   async function syncNow() {
-    await Promise.all([syncRestaurants(), syncTags()]);
+    await Promise.all([syncRestaurants(), syncTags(), syncDestinations()]);
   }
 
   function patchRestaurantCache(restaurant: Restaurant) {
@@ -147,15 +198,36 @@ function AuthenticatedShell({ children }: { children: React.ReactNode }) {
   }
 
   function patchTagCache(tag: Tag) {
-    const setter = tag.kind === "tag" ? setTags : tag.kind === "area" ? setAreas : setCities;
+    const setter = { type: setTypes, tags: setTags, area: setAreas }[tag.kind];
     setter((prev) => upsertByIdSortedByName(prev, tag));
+  }
+
+  function patchDestinationCache(destination: Destination) {
+    setDestinations((prev) => upsertByIdSortedByCreatedAt(prev, destination));
   }
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    syncNow().finally(() => setInitialLoadDone(true));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    Promise.all([syncDestinations(), syncTags()]).finally(() => setDestinationsAndTagsLoaded(true));
   }, []);
+
+  // Canonicalize the URL once destinations are loaded and none was specified, so the
+  // active destination is always shareable/reload-safe -- same pattern Header uses for
+  // ?q=, just written once here instead of per-navigation.
+  useEffect(() => {
+    if (!destinationsAndTagsLoaded || destinationParam || !activeDestinationId) return;
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("destination", activeDestinationId);
+    router.replace(`${pathname}?${params.toString()}`);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [destinationsAndTagsLoaded, destinationParam, activeDestinationId]);
+
+  useEffect(() => {
+    if (!destinationsAndTagsLoaded || !activeDestinationId) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    syncRestaurants().finally(() => setInitialLoadDone(true));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [destinationsAndTagsLoaded, activeDestinationId]);
 
   useEffect(() => {
     const channel = supabase
@@ -167,11 +239,13 @@ function AuthenticatedShell({ children }: { children: React.ReactNode }) {
         () => syncRestaurants()
       )
       .on("postgres_changes", { event: "*", schema: "public", table: "tags" }, () => syncTags())
+      .on("postgres_changes", { event: "*", schema: "public", table: "destinations" }, () => syncDestinations())
       .subscribe();
     return () => {
       supabase.removeChannel(channel);
     };
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeDestinationId]);
 
   if (!initialLoadDone) return <Loading />;
 
@@ -188,18 +262,24 @@ function AuthenticatedShell({ children }: { children: React.ReactNode }) {
         openAdd: () => setSheet({ kind: "add" }),
         openAddInline: (initialQuery, onSaved) => setSheet({ kind: "add-inline", initialQuery, onSaved }),
         restaurants,
+        types,
         tags,
         areas,
-        cities,
         restaurantsError,
         tagsError,
         lastSyncedAt,
+        destinations,
+        activeDestinationId,
+        activeDestination,
+        destinationsError,
         syncNow,
         syncRestaurants,
         syncTags,
+        syncDestinations,
         patchRestaurantCache,
         removeRestaurantsCache,
         patchTagCache,
+        patchDestinationCache,
       }}
     >
       <Header onAdd={() => setSheet({ kind: "add" })} />

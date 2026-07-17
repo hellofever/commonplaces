@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { TagPicker } from "./TagPicker";
 import { PhotoUploader, type PhotoUploadState } from "./PhotoUploader";
 import { useRestaurantUI } from "./AppShell";
-import type { Restaurant, RestaurantInput } from "@/lib/types";
+import type { Restaurant, RestaurantFormValues } from "@/lib/types";
 
 const EMPTY_PHOTO_UPLOAD_STATE: PhotoUploadState = { pendingStoragePaths: [], uploading: false };
 
@@ -15,18 +15,16 @@ export function RestaurantForm({
   submitLabel = "Save restaurant",
   suggestedTagName,
 }: {
-  initial: Partial<RestaurantInput>;
+  initial: Partial<RestaurantFormValues>;
   restaurantId?: string;
-  onSubmit: (values: RestaurantInput, pendingPhotoPaths: string[]) => Promise<Restaurant>;
+  onSubmit: (values: RestaurantFormValues, pendingPhotoPaths: string[]) => Promise<Restaurant>;
   submitLabel?: string;
   suggestedTagName?: string | null;
 }) {
   const [name, setName] = useState(initial.name ?? "");
+  const [typeIds, setTypeIds] = useState<string[]>(initial.typeIds ?? []);
   const [tagIds, setTagIds] = useState<string[]>(initial.tagIds ?? []);
   const [areaIds, setAreaIds] = useState<string[]>(initial.areaIds ?? []);
-  // City picker is hidden for now (see below) -- carry the existing value through
-  // untouched rather than dropping it on save.
-  const cityIds = initial.cityId ? [initial.cityId] : [];
   const [primaryTagId, setPrimaryTagId] = useState<string | null>(initial.primary_tag_id ?? null);
   const [address, setAddress] = useState(initial.address ?? "");
   const [lat, setLat] = useState<number | "">(initial.lat ?? "");
@@ -36,32 +34,40 @@ export function RestaurantForm({
   const [priceLevel, setPriceLevel] = useState<number | null>(initial.price_level ?? null);
   const [notes, setNotes] = useState(initial.notes ?? "");
   const [photoUpload, setPhotoUpload] = useState<PhotoUploadState>(EMPTY_PHOTO_UPLOAD_STATE);
-  const { tags: tagOptions } = useRestaurantUI();
+  const { types: typeOptions } = useRestaurantUI();
   const [editingLocation, setEditingLocation] = useState(initial.lat === undefined);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Keep primaryTagId valid as the tag selection changes: auto-pick when there's
+  // Keep primaryTagId valid as the type selection changes: auto-pick when there's
   // exactly one, clear/reassign if the current primary was removed.
   useEffect(() => {
-    if (tagIds.length === 0) {
+    if (typeIds.length === 0) {
       setPrimaryTagId(null);
-    } else if (tagIds.length === 1) {
-      setPrimaryTagId(tagIds[0]);
-    } else if (primaryTagId && !tagIds.includes(primaryTagId)) {
-      setPrimaryTagId(tagIds[0]);
+    } else if (typeIds.length === 1) {
+      setPrimaryTagId(typeIds[0]);
+    } else if (primaryTagId && !typeIds.includes(primaryTagId)) {
+      setPrimaryTagId(typeIds[0]);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tagIds]);
+  }, [typeIds]);
 
   const inputClass =
     "rounded-lg border border-black/10 px-3 py-2 text-sm dark:border-white/10 dark:bg-white/5";
-  const selectedTagOptions = tagOptions.filter((t) => tagIds.includes(t.id));
+  const selectedTypeOptions = typeOptions.filter((t) => typeIds.includes(t.id));
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!name || !address || lat === "" || lng === "") {
-      setError("Name, address and location are required.");
+    if (!name) {
+      setError("Name is required.");
+      return;
+    }
+    if (typeIds.length === 0 || typeIds.length > 3) {
+      setError("Pick 1 to 3 types.");
+      return;
+    }
+    if (areaIds.length === 0) {
+      setError("Pick at least one area.");
       return;
     }
     if (photoUpload.uploading) {
@@ -75,9 +81,9 @@ export function RestaurantForm({
         {
           name,
           primary_tag_id: primaryTagId,
-          lat: Number(lat),
-          lng: Number(lng),
-          address,
+          lat: lat === "" ? null : Number(lat),
+          lng: lng === "" ? null : Number(lng),
+          address: address || null,
           phone: phone || null,
           website: website || null,
           price_level: priceLevel,
@@ -85,9 +91,9 @@ export function RestaurantForm({
           google_place_id: initial.google_place_id ?? null,
           notes: notes || null,
           photo_url: initial.photo_url ?? null,
+          typeIds,
           tagIds,
           areaIds,
-          cityId: cityIds[0] ?? null,
         },
         photoUpload.pendingStoragePaths
       );
@@ -99,26 +105,27 @@ export function RestaurantForm({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-4 pr-6">
+    <form onSubmit={handleSubmit} className="flex flex-col gap-4">
       <label className="flex flex-col gap-1 text-sm">
         Name
         <input required value={name} onChange={(e) => setName(e.target.value)} className={inputClass} />
       </label>
 
       <TagPicker
-        kind="tag"
-        label="Tags"
+        kind="type"
+        label="Type"
         multiple
-        selectedIds={tagIds}
-        onChange={setTagIds}
+        maxSelections={3}
+        selectedIds={typeIds}
+        onChange={setTypeIds}
         initialQuery={suggestedTagName ?? undefined}
       />
 
-      {selectedTagOptions.length > 1 && (
+      {selectedTypeOptions.length > 1 && (
         <div className="flex flex-col gap-1.5 text-sm">
-          <span>Primary tag (colors the map pin)</span>
+          <span>Primary type (colors the map pin)</span>
           <div className="flex flex-wrap gap-1.5">
-            {selectedTagOptions.map((t) => (
+            {selectedTypeOptions.map((t) => (
               <button
                 key={t.id}
                 type="button"
@@ -137,23 +144,18 @@ export function RestaurantForm({
         </div>
       )}
 
+      <TagPicker kind="tags" label="Tags" multiple selectedIds={tagIds} onChange={setTagIds} />
+
       <TagPicker kind="area" label="Area" multiple selectedIds={areaIds} onChange={setAreaIds} />
-      {/* City is hidden for now -- cityIds still round-trips through save unchanged
-          (see handleSubmit) so existing data isn't lost, it's just not editable here. */}
 
       <label className="flex flex-col gap-1 text-sm">
         Address
-        <input
-          required
-          value={address}
-          onChange={(e) => setAddress(e.target.value)}
-          className={inputClass}
-        />
+        <input value={address} onChange={(e) => setAddress(e.target.value)} className={inputClass} />
       </label>
 
       <div className="flex flex-col gap-1 text-sm">
         <div className="flex items-center justify-between">
-          <span>Location</span>
+          <span>Location (optional)</span>
           {!editingLocation && (
             <button
               type="button"
@@ -167,7 +169,6 @@ export function RestaurantForm({
         {editingLocation ? (
           <div className="grid grid-cols-2 gap-3">
             <input
-              required
               type="number"
               step="any"
               placeholder="Latitude"
@@ -176,7 +177,6 @@ export function RestaurantForm({
               className={inputClass}
             />
             <input
-              required
               type="number"
               step="any"
               placeholder="Longitude"
@@ -187,7 +187,7 @@ export function RestaurantForm({
           </div>
         ) : (
           <p className="text-black/70 dark:text-white/70">
-            {lat}, {lng}
+            {lat != null && lng != null ? `${lat}, ${lng}` : "Not set — won't appear on the map"}
           </p>
         )}
       </div>
@@ -202,20 +202,25 @@ export function RestaurantForm({
         <input value={website} onChange={(e) => setWebsite(e.target.value)} className={inputClass} />
       </label>
 
-      <label className="flex flex-col gap-1 text-sm">
-        Price level
-        <select
-          value={priceLevel ?? ""}
-          onChange={(e) => setPriceLevel(e.target.value ? Number(e.target.value) : null)}
-          className={inputClass}
-        >
-          <option value="">Not set</option>
-          <option value="1">$</option>
-          <option value="2">$$</option>
-          <option value="3">$$$</option>
-          <option value="4">$$$$</option>
-        </select>
-      </label>
+      <div className="flex flex-col gap-1.5 text-sm">
+        <span>Price level</span>
+        <div className="flex gap-1.5">
+          {[1, 2, 3, 4].map((level) => (
+            <button
+              key={level}
+              type="button"
+              onClick={() => setPriceLevel(priceLevel === level ? null : level)}
+              className={`rounded-full border px-3 py-1.5 text-xs font-medium ${
+                priceLevel === level
+                  ? "border-black bg-black text-white dark:border-white dark:bg-white dark:text-black"
+                  : "border-black/15 text-black/70 dark:border-white/15 dark:text-white/70"
+              }`}
+            >
+              {"$".repeat(level)}
+            </button>
+          ))}
+        </div>
+      </div>
 
       <PhotoUploader restaurantId={restaurantId} onChange={setPhotoUpload} />
 

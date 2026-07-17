@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { tagColor } from "@/lib/tags";
+import { Star } from "@phosphor-icons/react";
+import { PHOSPHOR_ICON_MAP, tagColor, tagIcon } from "@/lib/tags";
 import { setFavourite } from "@/lib/restaurants";
 import { useRestaurantUI } from "./AppShell";
 import type { OpeningPeriod, Restaurant } from "@/lib/types";
@@ -49,7 +50,10 @@ export function RestaurantDetailView({
   restaurant: Restaurant;
   onEdit: () => void;
 }) {
-  const directionsUrl = `https://www.google.com/maps/dir/?api=1&destination=${restaurant.lat},${restaurant.lng}`;
+  const directionsUrl =
+    restaurant.lat != null && restaurant.lng != null
+      ? `https://www.google.com/maps/dir/?api=1&destination=${restaurant.lat},${restaurant.lng}`
+      : null;
   // Only link out to http(s) URLs -- website is freeform user text (form or Sheet
   // paste), so anything else (e.g. a javascript: URL) renders as plain text instead.
   const websiteHref =
@@ -76,52 +80,62 @@ export function RestaurantDetailView({
   }
 
   return (
-    <div className="flex flex-col gap-3 pr-6">
-      <h2 className="text-lg font-semibold">{restaurant.name}</h2>
+    <div className="flex flex-col gap-3">
+      <div className="flex items-start gap-2 pr-8">
+        <button
+          type="button"
+          onClick={handleToggleFavourite}
+          disabled={toggling}
+          aria-label={favourite ? "Remove from favourites" : "Add to favourites"}
+          className="mt-1 shrink-0 disabled:opacity-50"
+        >
+          <Star
+            size={18}
+            weight={favourite ? "fill" : "regular"}
+            className={favourite ? "text-[#bd5a1f]" : "text-black/30 dark:text-white/30"}
+          />
+        </button>
+        <h2 className="text-lg font-semibold">{restaurant.name}</h2>
+      </div>
 
-      <button
-        type="button"
-        onClick={handleToggleFavourite}
-        disabled={toggling}
-        className={`w-fit rounded-full border px-3 py-1.5 text-xs font-medium disabled:opacity-50 ${
-          favourite
-            ? "border-[#bd5a1f] bg-[#bd5a1f] text-white"
-            : "border-black/15 text-black/70 dark:border-white/15 dark:text-white/70"
-        }`}
-      >
-        {favourite ? "★ Favourite" : "☆ Add to favourites"}
-      </button>
-
-      <div className="flex flex-wrap gap-1.5">
+      <div className="flex flex-wrap items-center gap-1.5">
+        {restaurant.types.map((t) => {
+          const Icon = PHOSPHOR_ICON_MAP[tagIcon(t)];
+          return (
+            <span
+              key={t.id}
+              className="inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium text-white"
+              style={{ background: tagColor(t), borderColor: tagColor(t) }}
+            >
+              {Icon && <Icon size={12} weight="fill" />}
+              {t.name}
+            </span>
+          );
+        })}
         {restaurant.tags.map((t) => (
           <span
             key={t.id}
-            className="rounded-full border px-2.5 py-1 text-xs font-medium"
-            style={{ borderColor: tagColor(t), color: tagColor(t) }}
+            className="inline-flex items-center gap-1 rounded-full border border-black/15 px-2.5 py-1 text-xs font-medium text-black/60 dark:border-white/15 dark:text-white/60"
           >
             {t.name}
-            {t.id === restaurant.primary_tag_id ? " ★" : ""}
           </span>
         ))}
         {restaurant.areas.map((a) => (
           <span
             key={a.id}
-            className="rounded-full border border-black/15 px-2.5 py-1 text-xs text-black/60 dark:border-white/15 dark:text-white/60"
+            className="inline-flex items-center gap-1 rounded-full border border-black/15 px-2.5 py-1 text-xs font-medium text-black/60 dark:border-white/15 dark:text-white/60"
           >
             {a.name}
           </span>
         ))}
-        {restaurant.city && (
-          <span className="rounded-full border border-black/15 px-2.5 py-1 text-xs text-black/60 dark:border-white/15 dark:text-white/60">
-            {restaurant.city.name}
-          </span>
-        )}
       </div>
 
       {restaurant.price_level && (
         <p className="text-sm text-black/70 dark:text-white/70">{"$".repeat(restaurant.price_level)}</p>
       )}
-      <p className="text-sm text-black/70 dark:text-white/70">{restaurant.address}</p>
+      {restaurant.address && (
+        <p className="text-sm text-black/70 dark:text-white/70">{restaurant.address}</p>
+      )}
 
       {restaurant.opening_hours && restaurant.opening_hours.length > 0 ? (
         <div className="flex flex-col gap-0.5 text-sm">
@@ -164,17 +178,21 @@ export function RestaurantDetailView({
         <p className="text-sm italic text-black/60 dark:text-white/60">{restaurant.notes}</p>
       )}
       <div className="mt-2 flex gap-2">
-        <a
-          href={directionsUrl}
-          target="_blank"
-          rel="noreferrer"
-          className="flex-1 rounded-lg bg-black py-2 text-center text-sm font-medium text-white dark:bg-white dark:text-black"
-        >
-          Get directions
-        </a>
+        {directionsUrl && (
+          <a
+            href={directionsUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="flex-1 rounded-lg bg-black py-2 text-center text-sm font-medium text-white dark:bg-white dark:text-black"
+          >
+            Get directions
+          </a>
+        )}
         <button
           onClick={onEdit}
-          className="rounded-lg border border-black/10 px-4 py-2 text-sm dark:border-white/10"
+          className={`rounded-lg border border-black/10 px-4 py-2 text-sm dark:border-white/10 ${
+            directionsUrl ? "" : "flex-1"
+          }`}
         >
           Edit
         </button>

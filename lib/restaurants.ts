@@ -18,18 +18,19 @@ function normalize(row: RawRestaurantRow): Restaurant {
   const allTags = (row.restaurant_tags ?? []).map((rt) => rt.tag);
   const { restaurant_tags: _restaurantTags, primary_tag, ...rest } = row;
   return {
-    ...(rest as Omit<Restaurant, "primaryTag" | "tags" | "areas" | "city">),
+    ...(rest as Omit<Restaurant, "primaryTag" | "types" | "tags" | "areas">),
     primaryTag: primary_tag ?? null,
-    tags: allTags.filter((t) => t.kind === "tag"),
+    types: allTags.filter((t) => t.kind === "type"),
+    tags: allTags.filter((t) => t.kind === "tags"),
     areas: allTags.filter((t) => t.kind === "area"),
-    city: allTags.find((t) => t.kind === "city") ?? null,
   };
 }
 
-export async function fetchRestaurants(): Promise<Restaurant[]> {
+export async function fetchRestaurants(destinationId: string): Promise<Restaurant[]> {
   const { data, error } = await supabase
     .from("restaurants")
     .select(RESTAURANT_SELECT)
+    .eq("destination_id", destinationId)
     .order("name", { ascending: true });
 
   if (error) throw error;
@@ -47,8 +48,8 @@ export async function fetchRestaurantById(id: string): Promise<Restaurant> {
   return normalize(data as unknown as RawRestaurantRow);
 }
 
-// Full replace of a restaurant's tag/area/city join rows. Callers must pass the
-// COMPLETE set of ids (tags+areas+city combined) -- there's one join table for all
+// Full replace of a restaurant's type/tags/area join rows. Callers must pass the
+// COMPLETE set of ids (all three kinds combined) -- there's one join table for all
 // three kinds, so a partial list here would silently drop the other kinds. When only
 // one kind is being edited (e.g. the Sheet's Tags cell), combine the new ids for that
 // kind with the restaurant's existing ids for the other two before calling this.
@@ -62,9 +63,31 @@ export async function updateRestaurantTags(restaurantId: string, tagIds: string[
   if (error) throw error;
 }
 
+// Mirrors RestaurantForm's auto-pick effect (auto-assign when there's exactly one tag,
+// keep the current primary if it's still selected, otherwise fall back to the first
+// remaining tag) -- callers that change a restaurant's tags outside that form (e.g. the
+// Sheet's Tags cell/picker) need to run this themselves, or primary_tag_id goes stale
+// and the map pin falls back to its default grey/fork-knife look.
+export function derivePrimaryTagId(currentPrimaryTagId: string | null, newTagIds: string[]): string | null {
+  if (newTagIds.length === 0) return null;
+  if (currentPrimaryTagId && newTagIds.includes(currentPrimaryTagId)) return currentPrimaryTagId;
+  return newTagIds[0];
+}
+
+export async function updateRestaurantPrimaryTag(
+  restaurantId: string,
+  primaryTagId: string | null
+): Promise<void> {
+  const { error } = await supabase
+    .from("restaurants")
+    .update({ primary_tag_id: primaryTagId })
+    .eq("id", restaurantId);
+  if (error) throw error;
+}
+
 function splitInput(input: RestaurantInput) {
-  const { tagIds, areaIds, cityId, ...scalar } = input;
-  const allTagIds = [...tagIds, ...areaIds, ...(cityId ? [cityId] : [])];
+  const { typeIds, tagIds, areaIds, ...scalar } = input;
+  const allTagIds = [...typeIds, ...tagIds, ...areaIds];
   return { scalar, allTagIds };
 }
 
@@ -92,7 +115,7 @@ export async function setFavourite(id: string, value: boolean): Promise<void> {
 }
 
 // Direct scalar-field patch for inline Sheet-cell edits -- skips the tag-sync dance
-// entirely since tags/areas/city aren't scalar columns.
+// entirely since types/tags/areas aren't scalar columns.
 export async function patchRestaurant(
   id: string,
   fields: Partial<

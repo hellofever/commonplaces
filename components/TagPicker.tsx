@@ -5,13 +5,12 @@ import { TagPills } from "@/components/TagPills";
 import { createTag, PHOSPHOR_ICON_MAP, TAG_ICONS, type TagKind } from "@/lib/tags";
 import { useRestaurantUI } from "./AppShell";
 
-// Shared multi/single-select for tags, area, and city -- all three are user-creatable,
-// freeform lists stored the same way (see lib/tags.ts). Options render as a single row
-// of click-to-toggle pills via TagPills, same as the Filters dropdown -- a pill stays in
+// Shared multi/single-select for tags and area -- both are user-creatable, freeform
+// lists stored the same way (see lib/tags.ts). Options render as a single row of
+// click-to-toggle pills via TagPills, same as the Filters dropdown -- a pill stays in
 // place and just activates/deactivates, it doesn't jump to a separate "selected" row.
 // `multiple` just controls whether picking a new option replaces the current selection
-// or adds to it; nothing at the data layer enforces single-select for city, it's purely
-// a UI choice.
+// or adds to it.
 export function TagPicker({
   kind,
   label,
@@ -21,6 +20,7 @@ export function TagPicker({
   initialQuery,
   allowCreate = true,
   resetLabel,
+  maxSelections,
 }: {
   kind: TagKind;
   label: string;
@@ -30,9 +30,10 @@ export function TagPicker({
   initialQuery?: string;
   allowCreate?: boolean;
   resetLabel?: string;
+  maxSelections?: number;
 }) {
-  const { tags, areas, cities, patchTagCache } = useRestaurantUI();
-  const options = kind === "tag" ? tags : kind === "area" ? areas : cities;
+  const { types, tags, areas, patchTagCache } = useRestaurantUI();
+  const options = { type: types, tags, area: areas }[kind];
   const [showCreate, setShowCreate] = useState(!!initialQuery);
   const [createValue, setCreateValue] = useState(initialQuery ?? "");
   const [createIcon, setCreateIcon] = useState<string>(TAG_ICONS[0]);
@@ -40,17 +41,23 @@ export function TagPicker({
 
   function toggle(id: string) {
     if (multiple) {
-      onChange(selectedIds.includes(id) ? selectedIds.filter((x) => x !== id) : [...selectedIds, id]);
+      if (selectedIds.includes(id)) {
+        onChange(selectedIds.filter((x) => x !== id));
+      } else if (!maxSelections || selectedIds.length < maxSelections) {
+        onChange([...selectedIds, id]);
+      }
     } else {
       onChange(selectedIds.includes(id) ? [] : [id]);
     }
   }
 
+  const atCap = !!maxSelections && selectedIds.length >= maxSelections;
+
   async function handleCreate() {
-    if (!createValue.trim()) return;
+    if (!createValue.trim() || atCap) return;
     setCreating(true);
     try {
-      const tag = await createTag(kind, createValue.trim(), kind === "tag" ? createIcon : null);
+      const tag = await createTag(kind, createValue.trim(), kind === "type" ? createIcon : null);
       patchTagCache(tag);
       onChange(multiple ? [...selectedIds, tag.id] : [tag.id]);
       setCreateValue("");
@@ -64,7 +71,14 @@ export function TagPicker({
   return (
     <div className="flex flex-col gap-1.5 text-sm">
       <div className="flex items-center justify-between">
-        <span>{label}</span>
+        <span>
+          {label}
+          {maxSelections && (
+            <span className="ml-1.5 text-xs font-normal text-black/40 dark:text-white/40">
+              {selectedIds.length}/{maxSelections}
+            </span>
+          )}
+        </span>
         {resetLabel && selectedIds.length > 0 && (
           <button
             type="button"
@@ -78,7 +92,7 @@ export function TagPicker({
 
       <div className="flex flex-wrap gap-1.5">
         <TagPills kind={kind} options={options} selectedIds={selectedIds} onToggle={toggle} />
-        {allowCreate && !showCreate && (
+        {allowCreate && !showCreate && !atCap && (
           <button
             type="button"
             onClick={() => setShowCreate(true)}
@@ -119,7 +133,7 @@ export function TagPicker({
               Cancel
             </button>
           </div>
-          {kind === "tag" && (
+          {kind === "type" && (
             <div className="flex flex-wrap gap-1.5">
               {TAG_ICONS.map((iconName) => {
                 const Icon = PHOSPHOR_ICON_MAP[iconName];

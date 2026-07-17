@@ -6,18 +6,25 @@ import type { Tag } from "@/lib/tags";
 import { useRestaurantUI } from "@/components/AppShell";
 
 export interface FilterState {
+  typeIds: string[];
   tagIds: string[];
   areaIds: string[];
   favouritesOnly: boolean;
 }
 
-export const EMPTY_FILTERS: FilterState = { tagIds: [], areaIds: [], favouritesOnly: false };
+export const EMPTY_FILTERS: FilterState = {
+  typeIds: [],
+  tagIds: [],
+  areaIds: [],
+  favouritesOnly: false,
+};
 
 export function matchesFilters(
-  r: { tags: Tag[]; areas: Tag[]; is_favourite: boolean },
+  r: { types: Tag[]; tags: Tag[]; areas: Tag[]; is_favourite: boolean },
   filters: FilterState
 ): boolean {
   if (filters.favouritesOnly && !r.is_favourite) return false;
+  if (filters.typeIds.length > 0 && !r.types.some((t) => filters.typeIds.includes(t.id))) return false;
   if (filters.tagIds.length > 0 && !r.tags.some((t) => filters.tagIds.includes(t.id))) return false;
   if (filters.areaIds.length > 0 && !r.areas.some((a) => filters.areaIds.includes(a.id))) return false;
   return true;
@@ -38,9 +45,19 @@ export function ListFilters({
   trailing?: React.ReactNode;
   className?: string;
 }) {
-  const { tags, areas } = useRestaurantUI();
+  const { types, tags, areas } = useRestaurantUI();
 
-  const activeCount = value.tagIds.length + value.areaIds.length + (value.favouritesOnly ? 1 : 0);
+  const activeCount =
+    value.typeIds.length + value.tagIds.length + value.areaIds.length + (value.favouritesOnly ? 1 : 0);
+
+  function toggleType(id: string) {
+    onChange({
+      ...value,
+      typeIds: value.typeIds.includes(id)
+        ? value.typeIds.filter((x) => x !== id)
+        : [...value.typeIds, id],
+    });
+  }
 
   function toggleTag(id: string) {
     onChange({
@@ -85,6 +102,26 @@ export function ListFilters({
               ★ Favourites only
             </button>
 
+            {types.length > 0 && (
+              <div className="flex flex-col gap-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-black/50 dark:text-white/50">Type</span>
+                  {value.typeIds.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => onChange({ ...value, typeIds: [] })}
+                      className="text-xs font-medium text-black/50 hover:text-black/80 dark:text-white/50 dark:hover:text-white/80"
+                    >
+                      Reset type
+                    </button>
+                  )}
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  <TagPills kind="type" options={types} selectedIds={value.typeIds} onToggle={toggleType} />
+                </div>
+              </div>
+            )}
+
             {tags.length > 0 && (
               <div className="flex flex-col gap-1.5">
                 <div className="flex items-center justify-between">
@@ -100,7 +137,7 @@ export function ListFilters({
                   )}
                 </div>
                 <div className="flex flex-wrap gap-1.5">
-                  <TagPills kind="tag" options={tags} selectedIds={value.tagIds} onToggle={toggleTag} />
+                  <TagPills kind="tags" options={tags} selectedIds={value.tagIds} onToggle={toggleTag} />
                 </div>
               </div>
             )}

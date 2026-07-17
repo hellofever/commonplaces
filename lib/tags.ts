@@ -12,7 +12,7 @@ export const PHOSPHOR_ICON_MAP = PhosphorIcons as unknown as Record<
   ComponentType<{ size?: number; weight?: string; color?: string; className?: string }>
 >;
 
-export type TagKind = "tag" | "area" | "city";
+export type TagKind = "type" | "tags" | "area";
 
 export interface Tag {
   id: string;
@@ -23,8 +23,9 @@ export interface Tag {
   created_at: string;
 }
 
-// Rotating palette for auto-assigning a color to newly created tags (kind='tag' only --
-// area/city rows don't need one, since pin color comes from primary_tag_id, not area/city).
+// Rotating palette for auto-assigning a color to newly created tags (kind='type' only --
+// tags/area rows don't need one, since pin color comes from primary_tag_id, not
+// the other facets).
 // Matches the seed data in supabase/migrations/0001_init.sql -- new tags continue the
 // rotation from wherever the existing tag count leaves off.
 export const TAG_PALETTE = [
@@ -48,10 +49,10 @@ export async function fetchTags(kind: TagKind): Promise<Tag[]> {
 }
 
 export async function createTag(kind: TagKind, name: string, icon?: string | null): Promise<Tag> {
-  const color = kind === "tag" ? await nextPaletteColor() : null;
+  const color = kind === "type" ? await nextPaletteColor() : null;
   const { data, error } = await supabase
     .from("tags")
-    .insert({ kind, name, color, icon: kind === "tag" ? (icon ?? null) : null })
+    .insert({ kind, name, color, icon: kind === "type" ? (icon ?? null) : null })
     .select()
     .single();
 
@@ -63,7 +64,7 @@ async function nextPaletteColor(): Promise<string> {
   const { count } = await supabase
     .from("tags")
     .select("id", { count: "exact", head: true })
-    .eq("kind", "tag");
+    .eq("kind", "type");
   return TAG_PALETTE[(count ?? 0) % TAG_PALETTE.length];
 }
 

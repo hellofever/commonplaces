@@ -4,13 +4,16 @@ import { useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   deleteRestaurants,
+  derivePrimaryTagId,
   patchRestaurant,
   setFavourite,
+  updateRestaurantPrimaryTag,
   updateRestaurantTags,
 } from "@/lib/restaurants";
 import { createTag, fetchTags, PHOSPHOR_ICON_MAP, tagColor, tagIcon, type Tag, type TagKind } from "@/lib/tags";
 import { geocodeAddress } from "@/lib/geocode";
 import { matchesQuery } from "@/lib/search";
+import { fetchSheetColumnPrefs, saveSheetColumnPrefs } from "@/lib/sheetPrefs";
 import { useRestaurantUI } from "@/components/AppShell";
 import { BottomSheet } from "@/components/BottomSheet";
 import { Dropdown, dropdownTriggerClass } from "@/components/Dropdown";
@@ -39,6 +42,7 @@ import { FavStar } from "@/components/sheet/FavStar";
 import {
   compareRestaurants,
   isSheetColumn,
+  parseNullableFloat,
   parsePriceLevel,
   type SheetColumn,
   type SortDirection,
@@ -47,19 +51,41 @@ import { DownloadSimple, MapPin, Plus, Trash } from "@phosphor-icons/react";
 import { downloadCsv, restaurantsToCsv } from "@/lib/csv";
 import type { Restaurant } from "@/lib/types";
 
-const COLUMNS: { key: SheetColumn; label: string }[] = [
-  { key: "fav", label: "Fav" },
-  { key: "name", label: "Name" },
-  { key: "tags", label: "Tags" },
-  { key: "area", label: "Area" },
-  { key: "city", label: "City" },
-  { key: "address", label: "Address" },
-  { key: "phone", label: "Phone" },
-  { key: "price", label: "Price" },
-  { key: "notes", label: "Notes" },
+// Default column order -- the user's own order (once loaded/saved via
+// lib/sheetPrefs.ts) takes over from here, see the `columnOrder` state below.
+const ALL_COLUMN_KEYS: SheetColumn[] = [
+  "fav",
+  "name",
+  "type",
+  "tags",
+  "area",
+  "address",
+  "lat",
+  "lng",
+  "phone",
+  "website",
+  "price",
+  "notes",
+  "added",
+  "updated",
 ];
 
-const HIDEABLE_COLUMNS = COLUMNS.filter((col) => col.key !== "name");
+const COLUMN_LABELS: Record<SheetColumn, string> = {
+  fav: "Fav",
+  name: "Name",
+  type: "Type",
+  tags: "Tags",
+  area: "Area",
+  address: "Address",
+  lat: "Latitude",
+  lng: "Longitude",
+  phone: "Phone",
+  website: "Website",
+  price: "Price",
+  notes: "Notes",
+  added: "Date added",
+  updated: "Last edited",
+};
 
 const CHECKBOX_COLUMN_WIDTH = 48;
 const MIN_COLUMN_WIDTH = 60;
@@ -67,18 +93,40 @@ const NON_RESIZABLE_COLUMNS = new Set<SheetColumn>(["fav"]);
 const DEFAULT_COLUMN_WIDTHS: Record<SheetColumn, number> = {
   fav: 48,
   name: 180,
-  tags: 160,
+  type: 150,
+  tags: 150,
   area: 140,
-  city: 100,
   address: 220,
+  lat: 110,
+  lng: 110,
   phone: 130,
+  website: 180,
   price: 90,
   notes: 220,
+  added: 110,
+  updated: 110,
 };
+
+// Tag/Area/Type editing in the Sheet mutates one facet at a time (via openTagEditor's
+// BottomSheet picker, or a Tags/Type/Area cell paste) but restaurant_tags is one join
+// table for all four kinds -- this collects the *other* three kinds' existing ids so a
+// single-facet write via updateRestaurantTags doesn't silently drop them.
+function otherFacetIds(restaurant: Restaurant, exclude: Extract<TagKind, "type" | "tags" | "area">): string[] {
+  const facets: Record<Extract<TagKind, "type" | "tags" | "area">, Tag[]> = {
+    type: restaurant.types,
+    tags: restaurant.tags,
+    area: restaurant.areas,
+  };
+  const ids: string[] = [];
+  for (const kind of ["type", "tags", "area"] as const) {
+    if (kind !== exclude) ids.push(...facets[kind].map((t) => t.id));
+  }
+  return ids;
+}
 
 interface TagEditorState {
   restaurant: Restaurant;
-  kind: Extract<TagKind, "tag" | "area">;
+  kind: Extract<TagKind, "type" | "tags" | "area">;
   selectedIds: string[];
 }
 
@@ -101,38 +149,97 @@ export default function SheetPage() {
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [tagEditor, setTagEditor] = useState<TagEditorState | null>(null);
   const [draftName, setDraftName] = useState("");
+  const [columnOrder, setColumnOrder] = useState<SheetColumn[]>(ALL_COLUMN_KEYS);
   const [columnWidths, setColumnWidths] = useState<Record<SheetColumn, number>>(DEFAULT_COLUMN_WIDTHS);
   const [resizing, setResizing] = useState<{ column: SheetColumn; startX: number; startWidth: number } | null>(
     null
   );
   const [hiddenColumns, setHiddenColumns] = useState<Set<SheetColumn>>(new Set());
   const [autoFit, setAutoFit] = useState(false);
+  const [draggedColumn, setDraggedColumn] = useState<SheetColumn | null>(null);
+  const [dragOverColumn, setDragOverColumn] = useState<SheetColumn | null>(null);
+
+  // Loads the signed-in user's saved layout once on mount. Defensively filtered against
+  // ALL_COLUMN_KEYS so a layout saved before a column existed (or after one's removed)
+  // degrades gracefully instead of breaking -- unknown stored keys are dropped, known
+  // keys missing from the stored order are appended at the end.
+  useEffect(() => {
+    let cancelled = false;
+    fetchSheetColumnPrefs()
+      .then((prefs) => {
+        if (cancelled || !prefs) return;
+        const known = new Set(ALL_COLUMN_KEYS);
+        const storedOrder = prefs.columnOrder.filter((k) => known.has(k));
+        const missing = ALL_COLUMN_KEYS.filter((k) => !storedOrder.includes(k));
+        setColumnOrder([...storedOrder, ...missing]);
+        setHiddenColumns(new Set(prefs.hiddenColumns.filter((k) => known.has(k))));
+        setColumnWidths((w) => ({ ...w, ...prefs.columnWidths }));
+      })
+      .catch(console.error);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  function persistPrefs(overrides: {
+    columnOrder?: SheetColumn[];
+    hiddenColumns?: Set<SheetColumn>;
+    columnWidths?: Record<SheetColumn, number>;
+  }) {
+    saveSheetColumnPrefs({
+      columnOrder: overrides.columnOrder ?? columnOrder,
+      hiddenColumns: [...(overrides.hiddenColumns ?? hiddenColumns)],
+      columnWidths: overrides.columnWidths ?? columnWidths,
+    }).catch(console.error);
+  }
 
   function toggleColumnVisibility(key: SheetColumn) {
-    setHiddenColumns((s) => {
-      const next = new Set(s);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
+    const next = new Set(hiddenColumns);
+    if (next.has(key)) next.delete(key);
+    else next.add(key);
+    setHiddenColumns(next);
+    persistPrefs({ hiddenColumns: next });
   }
 
   function showAllColumns() {
     setHiddenColumns(new Set());
+    persistPrefs({ hiddenColumns: new Set() });
   }
 
   function hideAllColumns() {
-    setHiddenColumns(new Set(HIDEABLE_COLUMNS.map((col) => col.key)));
+    const next = new Set(hideableColumns.map((col) => col.key));
+    setHiddenColumns(next);
+    persistPrefs({ hiddenColumns: next });
+  }
+
+  function handleColumnDrop(targetKey: SheetColumn) {
+    setDragOverColumn(null);
+    if (!draggedColumn || draggedColumn === targetKey) {
+      setDraggedColumn(null);
+      return;
+    }
+    const next = columnOrder.filter((k) => k !== draggedColumn);
+    next.splice(next.indexOf(targetKey), 0, draggedColumn);
+    setColumnOrder(next);
+    persistPrefs({ columnOrder: next });
+    setDraggedColumn(null);
   }
 
   useEffect(() => {
     if (!resizing) return;
+    // Mirrors columnWidths state so `onUp` can persist the final value without
+    // reading (possibly stale) state right after the last setColumnWidths call.
+    const latestWidths = { current: columnWidths };
     function onMove(e: MouseEvent) {
       const next = Math.max(MIN_COLUMN_WIDTH, resizing!.startWidth + (e.clientX - resizing!.startX));
-      setColumnWidths((w) => ({ ...w, [resizing!.column]: next }));
+      setColumnWidths((w) => {
+        latestWidths.current = { ...w, [resizing!.column]: next };
+        return latestWidths.current;
+      });
     }
     function onUp() {
       setResizing(null);
+      persistPrefs({ columnWidths: latestWidths.current });
     }
     document.body.style.cursor = "col-resize";
     document.body.style.userSelect = "none";
@@ -167,6 +274,7 @@ export default function SheetPage() {
   }
 
   const filters: FilterState = {
+    typeIds: (searchParams.get("types") ?? "").split(",").filter(Boolean),
     tagIds: (searchParams.get("tags") ?? "").split(",").filter(Boolean),
     areaIds: (searchParams.get("areas") ?? "").split(",").filter(Boolean),
     favouritesOnly: searchParams.get("fav") === "1",
@@ -174,6 +282,8 @@ export default function SheetPage() {
 
   function updateFilters(next: FilterState) {
     const params = new URLSearchParams(searchParams.toString());
+    if (next.typeIds.length > 0) params.set("types", next.typeIds.join(","));
+    else params.delete("types");
     if (next.tagIds.length > 0) params.set("tags", next.tagIds.join(","));
     else params.delete("tags");
     if (next.areaIds.length > 0) params.set("areas", next.areaIds.join(","));
@@ -186,7 +296,9 @@ export default function SheetPage() {
 
   const filtered = restaurants.filter((r) => matchesQuery(r, query) && matchesFilters(r, filters));
   const sorted = [...filtered].sort((a, b) => compareRestaurants(a, b, sortColumn, sortDir));
-  const visibleColumns = COLUMNS.filter((col) => !hiddenColumns.has(col.key));
+  const orderedColumns = columnOrder.map((key) => ({ key, label: COLUMN_LABELS[key] }));
+  const hideableColumns = orderedColumns.filter((col) => col.key !== "name");
+  const visibleColumns = orderedColumns.filter((col) => !hiddenColumns.has(col.key));
   const totalTableWidth =
     CHECKBOX_COLUMN_WIDTH + visibleColumns.reduce((sum, col) => sum + columnWidths[col.key], 0);
   // Auto-fit expresses every column as a % of totalTableWidth instead of a literal px
@@ -206,6 +318,15 @@ export default function SheetPage() {
         case "phone":
           await patchRestaurant(restaurant.id, { phone: value || null });
           break;
+        case "website":
+          await patchRestaurant(restaurant.id, { website: value || null });
+          break;
+        case "lat":
+          await patchRestaurant(restaurant.id, { lat: parseNullableFloat(value) });
+          break;
+        case "lng":
+          await patchRestaurant(restaurant.id, { lng: parseNullableFloat(value) });
+          break;
         case "notes":
           await patchRestaurant(restaurant.id, { notes: value || null });
           break;
@@ -218,7 +339,18 @@ export default function SheetPage() {
           break;
         }
         case "address": {
-          if (!value || value === restaurant.address) break;
+          if (value === (restaurant.address ?? "")) break;
+          if (!value) {
+            // Cleared to empty -- a valid "no location" state, not a failed-geocode one.
+            await patchRestaurant(restaurant.id, { address: null, lat: null, lng: null });
+            setNeedsReview((s) => {
+              if (!s.has(restaurant.id)) return s;
+              const next = new Set(s);
+              next.delete(restaurant.id);
+              return next;
+            });
+            break;
+          }
           await patchRestaurant(restaurant.id, { address: value });
           const geo = await geocodeAddress(value);
           if (geo) {
@@ -234,9 +366,10 @@ export default function SheetPage() {
           }
           break;
         }
+        case "type":
         case "tags":
         case "area": {
-          const kind: TagKind = column === "tags" ? "tag" : "area";
+          const kind = column;
           const names = value
             .split(",")
             .map((s) => s.trim())
@@ -247,19 +380,24 @@ export default function SheetPage() {
             const match = existing.find((t) => t.name.toLowerCase() === name.toLowerCase());
             resolved.push(match ?? (await createTag(kind, name)));
           }
-          const otherIds =
-            column === "tags"
-              ? [...restaurant.areas.map((a) => a.id), ...(restaurant.city ? [restaurant.city.id] : [])]
-              : [...restaurant.tags.map((t) => t.id), ...(restaurant.city ? [restaurant.city.id] : [])];
+          const otherIds = otherFacetIds(restaurant, kind);
           await updateRestaurantTags(restaurant.id, [...resolved.map((t) => t.id), ...otherIds]);
+          if (kind === "type") {
+            const nextPrimaryId = derivePrimaryTagId(restaurant.primaryTag?.id ?? null, resolved.map((t) => t.id));
+            if (nextPrimaryId !== (restaurant.primaryTag?.id ?? null)) {
+              await updateRestaurantPrimaryTag(restaurant.id, nextPrimaryId);
+            }
+          }
           // Mutate in place so a later cell in the same paste row (e.g. Area right after
-          // Tags) sees this change instead of the pre-paste snapshot -- otherwise it
+          // Type) sees this change instead of the pre-paste snapshot -- otherwise it
           // would recombine against stale ids and clobber what was just set.
-          if (column === "tags") restaurant.tags = resolved;
+          if (kind === "type") restaurant.types = resolved;
+          else if (kind === "tags") restaurant.tags = resolved;
           else restaurant.areas = resolved;
           break;
         }
-        case "city":
+        case "added":
+        case "updated":
           break; // read-only
       }
     } catch (err) {
@@ -270,7 +408,7 @@ export default function SheetPage() {
   async function commitCell(restaurant: Restaurant, column: SheetColumn, raw: string) {
     await applyCellEdit(restaurant, column, raw);
     await syncRestaurants();
-    if (column === "tags" || column === "area") await syncTags();
+    if (column === "type" || column === "tags" || column === "area") await syncTags();
   }
 
   // Pasting starting from a text-input column (Name/Phone/Address/Price/Notes) cascades
@@ -289,15 +427,22 @@ export default function SheetPage() {
     for (let ri = 0; ri < rows.length; ri++) {
       const original = sorted[rowIndex + ri];
       if (!original) break;
-      // A working copy reused across every cell in this row so that, e.g., a Tags edit
-      // followed by an Area edit in the same paste sees the Tags change instead of the
-      // pre-paste snapshot (see the mutation note in applyCellEdit's tags/area case).
-      const workingRestaurant: Restaurant = { ...original, tags: [...original.tags], areas: [...original.areas] };
+      // A working copy reused across every cell in this row so that, e.g., a Type edit
+      // followed by an Area edit in the same paste sees the Type change instead of the
+      // pre-paste snapshot (see the mutation note in applyCellEdit's type/tags/area case).
+      const workingRestaurant: Restaurant = {
+        ...original,
+        types: [...original.types],
+        tags: [...original.tags],
+        areas: [...original.areas],
+      };
       const cells = rows[ri].split("\t");
       for (let ci = 0; ci < cells.length; ci++) {
         const targetColumn = visibleColumns[anchorColIndex + ci];
         if (!targetColumn) break;
-        if (targetColumn.key === "tags" || targetColumn.key === "area") touchedTagColumns = true;
+        if (targetColumn.key === "type" || targetColumn.key === "tags" || targetColumn.key === "area") {
+          touchedTagColumns = true;
+        }
         await applyCellEdit(workingRestaurant, targetColumn.key, cells[ci]);
       }
     }
@@ -337,28 +482,22 @@ export default function SheetPage() {
     setConfirmingDelete(true);
   }
 
-  function openTagEditor(restaurant: Restaurant, kind: Extract<TagKind, "tag" | "area">) {
-    setTagEditor({
-      restaurant,
-      kind,
-      selectedIds: kind === "tag" ? restaurant.tags.map((t) => t.id) : restaurant.areas.map((a) => a.id),
-    });
+  function openTagEditor(restaurant: Restaurant, kind: Extract<TagKind, "type" | "tags" | "area">) {
+    const idsByKind = { type: restaurant.types, tags: restaurant.tags, area: restaurant.areas };
+    setTagEditor({ restaurant, kind, selectedIds: idsByKind[kind].map((t) => t.id) });
   }
 
   async function handleTagEditorChange(newIds: string[]) {
     if (!tagEditor) return;
     setTagEditor({ ...tagEditor, selectedIds: newIds });
-    const other =
-      tagEditor.kind === "tag"
-        ? [
-            ...tagEditor.restaurant.areas.map((a) => a.id),
-            ...(tagEditor.restaurant.city ? [tagEditor.restaurant.city.id] : []),
-          ]
-        : [
-            ...tagEditor.restaurant.tags.map((t) => t.id),
-            ...(tagEditor.restaurant.city ? [tagEditor.restaurant.city.id] : []),
-          ];
+    const other = otherFacetIds(tagEditor.restaurant, tagEditor.kind);
     await updateRestaurantTags(tagEditor.restaurant.id, [...newIds, ...other]);
+    if (tagEditor.kind === "type") {
+      const nextPrimaryId = derivePrimaryTagId(tagEditor.restaurant.primaryTag?.id ?? null, newIds);
+      if (nextPrimaryId !== (tagEditor.restaurant.primaryTag?.id ?? null)) {
+        await updateRestaurantPrimaryTag(tagEditor.restaurant.id, nextPrimaryId);
+      }
+    }
   }
 
   function closeTagEditor() {
@@ -378,15 +517,15 @@ export default function SheetPage() {
         );
       case "name":
         return <EditableTextCell value={r.name} onCommit={(v) => commitCell(r, "name", v)} />;
-      case "tags":
+      case "type":
         return (
           <button
             type="button"
-            onClick={() => openTagEditor(r, "tag")}
+            onClick={() => openTagEditor(r, "type")}
             className="block w-full truncate px-3 py-2 text-left"
           >
-            {r.tags.length > 0 ? (
-              r.tags.map((t, i) => {
+            {r.types.length > 0 ? (
+              r.types.map((t, i) => {
                 const Icon = PHOSPHOR_ICON_MAP[tagIcon(t)];
                 return (
                   <span key={t.id}>
@@ -394,11 +533,23 @@ export default function SheetPage() {
                       {Icon && <Icon size={12} weight="bold" className="mr-0.5 inline-block align-[-2px]" />}
                       {t.name}
                     </span>
-                    {i < r.tags.length - 1 && ", "}
+                    {i < r.types.length - 1 && ", "}
                   </span>
                 );
               })
             ) : (
+              <span className="text-black/30 dark:text-white/30">Empty</span>
+            )}
+          </button>
+        );
+      case "tags":
+        return (
+          <button
+            type="button"
+            onClick={() => openTagEditor(r, "tags")}
+            className="block w-full truncate px-3 py-2 text-left"
+          >
+            {r.tags.map((t) => t.name).join(", ") || (
               <span className="text-black/30 dark:text-white/30">Empty</span>
             )}
           </button>
@@ -415,12 +566,6 @@ export default function SheetPage() {
             )}
           </button>
         );
-      case "city":
-        return (
-          <span className="block px-3 py-2 text-black/50 dark:text-white/50">
-            {r.city?.name ?? <span className="text-black/30 dark:text-white/30">Empty</span>}
-          </span>
-        );
       case "address":
         return (
           <AddressCell
@@ -430,8 +575,24 @@ export default function SheetPage() {
             onClickReview={() => openEdit(r)}
           />
         );
+      case "lat":
+        return (
+          <EditableTextCell
+            value={r.lat != null ? String(r.lat) : ""}
+            onCommit={(v) => commitCell(r, "lat", v)}
+          />
+        );
+      case "lng":
+        return (
+          <EditableTextCell
+            value={r.lng != null ? String(r.lng) : ""}
+            onCommit={(v) => commitCell(r, "lng", v)}
+          />
+        );
       case "phone":
         return <EditableTextCell value={r.phone ?? ""} onCommit={(v) => commitCell(r, "phone", v)} />;
+      case "website":
+        return <EditableTextCell value={r.website ?? ""} onCommit={(v) => commitCell(r, "website", v)} />;
       case "price":
         return (
           <PriceCell
@@ -441,6 +602,18 @@ export default function SheetPage() {
         );
       case "notes":
         return <EditableTextCell value={r.notes ?? ""} onCommit={(v) => commitCell(r, "notes", v)} />;
+      case "added":
+        return (
+          <span className="block w-full truncate px-3 py-2 text-black/50 dark:text-white/50">
+            {new Date(r.created_at).toLocaleDateString()}
+          </span>
+        );
+      case "updated":
+        return (
+          <span className="block w-full truncate px-3 py-2 text-black/50 dark:text-white/50">
+            {new Date(r.updated_at).toLocaleDateString()}
+          </span>
+        );
     }
   }
 
@@ -478,7 +651,7 @@ export default function SheetPage() {
                   )}
                 >
                   <div className="flex flex-col gap-1.5">
-                    {HIDEABLE_COLUMNS.map((col) => (
+                    {hideableColumns.map((col) => (
                       <label
                         key={col.key}
                         className="flex items-center gap-2 text-xs text-black/70 dark:text-white/70"
@@ -520,12 +693,6 @@ export default function SheetPage() {
                   }`}
                 >
                   Auto-fit
-                </button>
-                <button type="button" className={dropdownTriggerClass}>
-                  Import
-                </button>
-                <button type="button" className={dropdownTriggerClass}>
-                  Sync
                 </button>
               </div>
               <div className="flex items-center gap-2">
@@ -572,15 +739,30 @@ export default function SheetPage() {
               return (
                 <th
                   key={col.key}
+                  draggable
+                  title="Click to sort, drag to reorder"
                   onClick={() => toggleSort(col.key)}
-                  className={`relative cursor-pointer select-none truncate px-3 py-2 hover:text-black/80 dark:hover:text-white/80 ${
+                  onDragStart={() => setDraggedColumn(col.key)}
+                  onDragEnter={() => setDragOverColumn(col.key)}
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={() => handleColumnDrop(col.key)}
+                  onDragEnd={() => {
+                    setDraggedColumn(null);
+                    setDragOverColumn(null);
+                  }}
+                  className={`relative cursor-grab select-none truncate px-3 py-2 hover:text-black/80 active:cursor-grabbing dark:hover:text-white/80 ${
                     active ? "text-black/80 dark:text-white/80" : ""
+                  } ${
+                    dragOverColumn === col.key && draggedColumn !== col.key
+                      ? "bg-black/10 dark:bg-white/10"
+                      : ""
                   }`}
                 >
                   {col.key === "fav" ? "" : col.label}
                   {active && <span className="ml-1">{sortDir === "asc" ? "▲" : "▼"}</span>}
                   {!NON_RESIZABLE_COLUMNS.has(col.key) && (
                     <div
+                      draggable={false}
                       onMouseDown={(e) => startResize(e, col.key)}
                       onClick={(e) => e.stopPropagation()}
                       className={`absolute right-0 top-0 h-full w-1.5 cursor-col-resize select-none bg-black/10 opacity-0 transition-opacity hover:bg-black/30 group-hover:opacity-100 dark:bg-white/10 dark:hover:bg-white/30 ${
@@ -678,8 +860,9 @@ export default function SheetPage() {
         {tagEditor && (
           <TagPicker
             kind={tagEditor.kind}
-            label={tagEditor.kind === "tag" ? "Tags" : "Area"}
+            label={tagEditor.kind === "type" ? "Type" : tagEditor.kind === "tags" ? "Tags" : "Area"}
             multiple
+            maxSelections={tagEditor.kind === "type" ? 3 : undefined}
             selectedIds={tagEditor.selectedIds}
             onChange={handleTagEditorChange}
           />
