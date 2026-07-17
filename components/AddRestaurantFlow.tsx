@@ -4,6 +4,7 @@ import { useState } from "react";
 import { RestaurantForm } from "./RestaurantForm";
 import { suggestTagName } from "@/lib/tags";
 import { findByPlaceId, insertRestaurant, updateRestaurant } from "@/lib/restaurants";
+import { linkPendingPhotos } from "@/lib/photos";
 import { placesFetch } from "@/lib/placesApi";
 import type { Restaurant, RestaurantInput } from "@/lib/types";
 
@@ -108,11 +109,15 @@ export function AddRestaurantFlow({
     setStep("form");
   }
 
-  async function handleSave(values: RestaurantInput) {
+  async function handleSave(values: RestaurantInput, pendingPhotoPaths: string[]): Promise<Restaurant> {
     const saved = editing
       ? await updateRestaurant(editing.id, values)
       : await insertRestaurant(values);
+    if (pendingPhotoPaths.length) {
+      await linkPendingPhotos(saved.id, pendingPhotoPaths);
+    }
     onSaved(saved);
+    return saved;
   }
 
   if (duplicate) {
@@ -144,6 +149,7 @@ export function AddRestaurantFlow({
         </h2>
         <RestaurantForm
           initial={formInitial}
+          restaurantId={editing?.id}
           onSubmit={handleSave}
           suggestedTagName={suggestedTagName}
         />

@@ -2,17 +2,22 @@
 
 import { useEffect, useState } from "react";
 import { TagPicker } from "./TagPicker";
+import { PhotoUploader, type PhotoUploadState } from "./PhotoUploader";
 import { useRestaurantUI } from "./AppShell";
-import type { RestaurantInput } from "@/lib/types";
+import type { Restaurant, RestaurantInput } from "@/lib/types";
+
+const EMPTY_PHOTO_UPLOAD_STATE: PhotoUploadState = { pendingStoragePaths: [], uploading: false };
 
 export function RestaurantForm({
   initial,
+  restaurantId,
   onSubmit,
   submitLabel = "Save restaurant",
   suggestedTagName,
 }: {
   initial: Partial<RestaurantInput>;
-  onSubmit: (values: RestaurantInput) => Promise<void>;
+  restaurantId?: string;
+  onSubmit: (values: RestaurantInput, pendingPhotoPaths: string[]) => Promise<Restaurant>;
   submitLabel?: string;
   suggestedTagName?: string | null;
 }) {
@@ -30,6 +35,7 @@ export function RestaurantForm({
   const [website, setWebsite] = useState(initial.website ?? "");
   const [priceLevel, setPriceLevel] = useState<number | null>(initial.price_level ?? null);
   const [notes, setNotes] = useState(initial.notes ?? "");
+  const [photoUpload, setPhotoUpload] = useState<PhotoUploadState>(EMPTY_PHOTO_UPLOAD_STATE);
   const { tags: tagOptions } = useRestaurantUI();
   const [editingLocation, setEditingLocation] = useState(initial.lat === undefined);
   const [saving, setSaving] = useState(false);
@@ -58,26 +64,33 @@ export function RestaurantForm({
       setError("Name, address and location are required.");
       return;
     }
+    if (photoUpload.uploading) {
+      setError("Photos are still uploading — wait for them to finish.");
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
-      await onSubmit({
-        name,
-        primary_tag_id: primaryTagId,
-        lat: Number(lat),
-        lng: Number(lng),
-        address,
-        phone: phone || null,
-        website: website || null,
-        price_level: priceLevel,
-        opening_hours: initial.opening_hours ?? null,
-        google_place_id: initial.google_place_id ?? null,
-        notes: notes || null,
-        photo_url: initial.photo_url ?? null,
-        tagIds,
-        areaIds,
-        cityId: cityIds[0] ?? null,
-      });
+      await onSubmit(
+        {
+          name,
+          primary_tag_id: primaryTagId,
+          lat: Number(lat),
+          lng: Number(lng),
+          address,
+          phone: phone || null,
+          website: website || null,
+          price_level: priceLevel,
+          opening_hours: initial.opening_hours ?? null,
+          google_place_id: initial.google_place_id ?? null,
+          notes: notes || null,
+          photo_url: initial.photo_url ?? null,
+          tagIds,
+          areaIds,
+          cityId: cityIds[0] ?? null,
+        },
+        photoUpload.pendingStoragePaths
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
     } finally {
@@ -204,6 +217,8 @@ export function RestaurantForm({
         </select>
       </label>
 
+      <PhotoUploader restaurantId={restaurantId} onChange={setPhotoUpload} />
+
       <label className="flex flex-col gap-1 text-sm">
         Notes
         <textarea
@@ -218,10 +233,10 @@ export function RestaurantForm({
 
       <button
         type="submit"
-        disabled={saving}
+        disabled={saving || photoUpload.uploading}
         className="mt-1 rounded-lg bg-black py-2.5 text-sm font-medium text-white disabled:opacity-50 dark:bg-white dark:text-black"
       >
-        {saving ? "Saving…" : submitLabel}
+        {photoUpload.uploading ? "Uploading photos…" : saving ? "Saving…" : submitLabel}
       </button>
     </form>
   );

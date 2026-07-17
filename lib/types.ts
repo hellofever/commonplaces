@@ -31,6 +31,13 @@ export interface Restaurant {
   city: Tag | null;
 }
 
+export interface RestaurantPhoto {
+  id: string;
+  restaurant_id: string;
+  storage_path: string;
+  created_at: string;
+}
+
 // Shape used for create/update -- scalar fields plus tag selections as plain id
 // arrays/values, which lib/restaurants.ts syncs into restaurant_tags separately.
 export interface RestaurantInput {
