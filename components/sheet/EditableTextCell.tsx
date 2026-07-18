@@ -9,10 +9,12 @@ export function EditableTextCell({
   value,
   onCommit,
   placeholder = "Empty",
+  className = "",
 }: {
   value: string;
   onCommit: (next: string) => void;
   placeholder?: string;
+  className?: string;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
@@ -38,7 +40,7 @@ export function EditableTextCell({
             setEditing(false);
           }
         }}
-        className="w-full min-w-[8ch] border border-black/20 bg-white px-2 py-1 text-sm outline-none dark:border-white/20 dark:bg-black"
+        className={`w-full min-w-[8ch] border border-black/20 bg-white px-2 py-1 text-sm outline-none dark:border-white/20 dark:bg-black ${className}`}
       />
     );
   }
@@ -50,7 +52,7 @@ export function EditableTextCell({
         setDraft(value);
         setEditing(true);
       }}
-      className="block w-full truncate px-3 py-2 text-left"
+      className={`block w-full truncate px-3 py-2 text-left ${className}`}
     >
       {value || <span className="text-black/30 dark:text-white/30">{placeholder}</span>}
     </button>

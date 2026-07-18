@@ -32,7 +32,7 @@ export function MapControlsDrawer({
   return (
     <div
       onTransitionEnd={handleTransitionEnd}
-      className={`shrink-0 overflow-hidden bg-white shadow-xl transition-all duration-300 ease-in-out
+      className={`shrink-0 overflow-hidden bg-white shadow-xl transition-[width,height] duration-300 ease-in-out
         md:order-1 md:h-auto
         dark:bg-zinc-900 ${open ? "h-64 md:w-72" : "h-0 md:w-0"}`}
     >

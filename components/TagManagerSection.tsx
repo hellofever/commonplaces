@@ -25,6 +25,7 @@ import {
   type TagKind,
 } from "@/lib/tags";
 import { swatchColor, TYPE_HUES, type TypeHue } from "@/lib/colorTokens";
+import { useOptimisticSave } from "@/lib/useOptimisticSave";
 import { useRestaurantUI } from "./AppShell";
 
 // One list+add+delete section per taxonomy facet (Type/Tags/Area), used 3x by
@@ -41,33 +42,38 @@ export function TagManagerSection({
 }) {
   const { types, tags, areas, patchTagCache, removeTagFromCache } = useRestaurantUI();
   const options = { type: types, tags, area: areas }[kind];
+  const { run, isPending, isError } = useOptimisticSave();
 
   const [expanded, setExpanded] = useState<{ id: string; field: "color" | "icon" } | null>(null);
 
   const [pendingDelete, setPendingDelete] = useState<Tag | null>(null);
   const [pendingDeleteCount, setPendingDeleteCount] = useState<number | null>(null);
-  const [deleting, setDeleting] = useState(false);
 
   const [showCreate, setShowCreate] = useState(false);
   const [createValue, setCreateValue] = useState("");
   const [createIcon, setCreateIcon] = useState<string>(TAG_ICONS[0]);
   const [createColor, setCreateColor] = useState<TypeHue>(TYPE_HUES[0]);
-  const [creating, setCreating] = useState(false);
 
   function toggleExpand(id: string, field: "color" | "icon") {
     setExpanded((prev) => (prev?.id === id && prev.field === field ? null : { id, field }));
   }
 
-  async function handleColorPick(tag: Tag, color: TypeHue) {
+  function handleColorPick(tag: Tag, color: TypeHue) {
     setExpanded(null);
-    const updated = await updateTag(tag.id, { color });
-    patchTagCache(updated);
+    run(`${tag.id}:color`, {
+      apply: () => patchTagCache({ ...tag, color }),
+      revert: () => patchTagCache(tag),
+      write: () => updateTag(tag.id, { color }),
+    });
   }
 
-  async function handleIconPick(tag: Tag, icon: string) {
+  function handleIconPick(tag: Tag, icon: string) {
     setExpanded(null);
-    const updated = await updateTag(tag.id, { icon });
-    patchTagCache(updated);
+    run(`${tag.id}:icon`, {
+      apply: () => patchTagCache({ ...tag, icon }),
+      revert: () => patchTagCache(tag),
+      write: () => updateTag(tag.id, { icon }),
+    });
   }
 
   async function requestDelete(tag: Tag) {
@@ -77,16 +83,15 @@ export function TagManagerSection({
     setPendingDeleteCount(count);
   }
 
-  async function handleDeleteConfirmed() {
+  function handleDeleteConfirmed() {
     if (!pendingDelete) return;
-    setDeleting(true);
-    try {
-      await deleteTag(pendingDelete.id);
-      removeTagFromCache(kind, pendingDelete.id);
-      setPendingDelete(null);
-    } finally {
-      setDeleting(false);
-    }
+    const tag = pendingDelete;
+    run(tag.id, {
+      apply: () => removeTagFromCache(kind, tag.id),
+      revert: () => patchTagCache(tag),
+      write: () => deleteTag(tag.id),
+      onSuccess: () => setPendingDelete(null),
+    });
   }
 
   function resetCreateForm() {
@@ -95,22 +100,21 @@ export function TagManagerSection({
     setCreateColor(TYPE_HUES[0]);
   }
 
-  async function handleCreate() {
+  function handleCreate() {
     if (!createValue.trim()) return;
-    setCreating(true);
-    try {
-      const tag = await createTag(
-        kind,
-        createValue.trim(),
-        colorable ? createIcon : null,
-        colorable ? createColor : null
-      );
-      patchTagCache(tag);
-      resetCreateForm();
-      setShowCreate(false);
-    } finally {
-      setCreating(false);
-    }
+    const name = createValue.trim();
+    const icon = colorable ? createIcon : null;
+    const color = colorable ? createColor : null;
+    run("create", {
+      apply: () => {},
+      revert: () => {},
+      write: () => createTag(kind, name, icon, color),
+      onSuccess: (tag) => {
+        patchTagCache(tag);
+        resetCreateForm();
+        setShowCreate(false);
+      },
+    });
   }
 
   return (
@@ -135,7 +139,11 @@ export function TagManagerSection({
                     type="button"
                     onClick={() => toggleExpand(tag.id, "icon")}
                     aria-label={`Change ${tag.name} icon`}
-                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-black/10 dark:border-white/10"
+                    className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full border ${
+                      isError(`${tag.id}:icon`)
+                        ? "border-red-500 ring-2 ring-red-500"
+                        : "border-black/10 dark:border-white/10"
+                    }`}
                     style={{ color: tagColor(tag) }}
                   >
                     <Icon size={14} weight="bold" />
@@ -146,7 +154,11 @@ export function TagManagerSection({
                     type="button"
                     onClick={() => toggleExpand(tag.id, "color")}
                     aria-label={`Change ${tag.name} color`}
-                    className="h-5 w-5 shrink-0 rounded-full border border-black/10 dark:border-white/10"
+                    className={`h-5 w-5 shrink-0 rounded-full border ${
+                      isError(`${tag.id}:color`)
+                        ? "border-red-500 ring-2 ring-red-500"
+                        : "border-black/10 dark:border-white/10"
+                    }`}
                     style={{ background: tagColor(tag) }}
                   />
                 )}
@@ -234,10 +246,10 @@ export function TagManagerSection({
             <button
               type="button"
               onClick={handleCreate}
-              disabled={creating || !createValue.trim()}
+              disabled={isPending("create") || !createValue.trim()}
               className="rounded-lg bg-black px-3 py-2 text-xs font-medium text-white disabled:opacity-50 dark:bg-white dark:text-black"
             >
-              {creating ? "Adding…" : "Add"}
+              {isPending("create") ? "Adding…" : "Add"}
             </button>
             <button
               type="button"
@@ -250,6 +262,9 @@ export function TagManagerSection({
               Cancel
             </button>
           </div>
+          {isError("create") && (
+            <p className="text-sm text-red-600 dark:text-red-400">Something went wrong. Try again.</p>
+          )}
 
           {colorable && (
             <>
@@ -310,9 +325,16 @@ export function TagManagerSection({
                   : `Used by ${pendingDeleteCount} restaurant${pendingDeleteCount === 1 ? "" : "s"} — this removes it from all of them.`}
             </AlertDialogDescription>
           </AlertDialogHeader>
+          {pendingDelete && isError(pendingDelete.id) && (
+            <p className="text-sm text-red-600 dark:text-red-400">Something went wrong. Try again.</p>
+          )}
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction variant="destructive" onClick={handleDeleteConfirmed} disabled={deleting}>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={handleDeleteConfirmed}
+              disabled={pendingDelete !== null && isPending(pendingDelete.id)}
+            >
               Delete
             </AlertDialogAction>
           </AlertDialogFooter>

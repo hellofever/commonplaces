@@ -47,7 +47,7 @@ import {
   type SheetColumn,
   type SortDirection,
 } from "@/lib/sheetSort";
-import { DownloadSimple, MapPin, Plus, Trash } from "@phosphor-icons/react";
+import { CaretDown, CaretUp, DownloadSimple, MapPin, Plus, Trash } from "@phosphor-icons/react";
 import { downloadCsv, restaurantsToCsv } from "@/lib/csv";
 import type { Restaurant } from "@/lib/types";
 
@@ -516,7 +516,9 @@ export default function SheetPage() {
           />
         );
       case "name":
-        return <EditableTextCell value={r.name} onCommit={(v) => commitCell(r, "name", v)} />;
+        return (
+          <EditableTextCell value={r.name} onCommit={(v) => commitCell(r, "name", v)} className="font-bold" />
+        );
       case "type":
         return (
           <button
@@ -646,7 +648,7 @@ export default function SheetPage() {
                   trigger={({ open, toggle }) => (
                     <button type="button" onClick={toggle} className={dropdownTriggerClass}>
                       Columns{hiddenColumns.size > 0 ? ` (${hiddenColumns.size} hidden)` : ""}
-                      <span className="text-black/40">{open ? "▲" : "▼"}</span>
+                      {open ? <CaretUp size={12} weight="bold" /> : <CaretDown size={12} weight="bold" />}
                     </button>
                   )}
                 >
@@ -759,7 +761,15 @@ export default function SheetPage() {
                   }`}
                 >
                   {col.key === "fav" ? "" : col.label}
-                  {active && <span className="ml-1">{sortDir === "asc" ? "▲" : "▼"}</span>}
+                  {active && (
+                    <span className="ml-1 inline-flex align-middle">
+                      {sortDir === "asc" ? (
+                        <CaretUp size={12} weight="bold" />
+                      ) : (
+                        <CaretDown size={12} weight="bold" />
+                      )}
+                    </span>
+                  )}
                   {!NON_RESIZABLE_COLUMNS.has(col.key) && (
                     <div
                       draggable={false}

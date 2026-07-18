@@ -59,7 +59,7 @@ export function RestaurantCardContent({
             className={favourite ? "text-[#bd5a1f]" : "text-black/30 dark:text-white/30"}
           />
         </button>
-        <h3 className="min-w-0 flex-1 text-sm font-semibold">{restaurant.name}</h3>
+        <h3 className="min-w-0 flex-1 text-sm font-bold">{restaurant.name}</h3>
         {onClose && (
           <button
             type="button"

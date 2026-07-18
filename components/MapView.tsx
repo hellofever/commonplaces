@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { APIProvider, Map, AdvancedMarker, useMap } from "@vis.gl/react-google-maps";
-import { ArrowsHorizontal, Target } from "@phosphor-icons/react";
+import { ArrowsHorizontal, Compass, GpsFix } from "@phosphor-icons/react";
 import { PHOSPHOR_ICON_MAP, tagIcon, tagMapColor } from "@/lib/tags";
 import { useRestaurantUI } from "./AppShell";
 import { MapControlsDrawer } from "./MapControlsDrawer";
@@ -52,8 +52,7 @@ function RecenterOnDestinationChange({ destination }: { destination: Destination
       return;
     }
     if (!map || destination.lat == null || destination.lng == null) return;
-    map.panTo({ lat: destination.lat, lng: destination.lng });
-    map.setZoom(DESTINATION_ZOOM);
+    animateCameraTo(map, { lat: destination.lat, lng: destination.lng, zoom: DESTINATION_ZOOM });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map, destination.id]);
   return null;
@@ -75,13 +74,29 @@ function FitToFilter({ active, restaurants }: { active: boolean; restaurants: Ge
     if (!map || !active || restaurants.length === 0) return;
     const bounds = new google.maps.LatLngBounds();
     restaurants.forEach((r) => bounds.extend({ lat: r.lat, lng: r.lng }));
-    map.fitBounds(bounds, 64);
-    const listener = google.maps.event.addListenerOnce(map, "bounds_changed", () => {
-      if ((map.getZoom() ?? 0) > FIT_MAX_ZOOM) map.setZoom(FIT_MAX_ZOOM);
-    });
-    return () => google.maps.event.removeListener(listener);
+    animateFitBounds(map, bounds);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map, active, key]);
+  return null;
+}
+
+// Fits the map to every geo-tagged restaurant once, right after the (async) restaurant
+// list first resolves -- `done` guards it to run at most once per mount, so it doesn't
+// fight the user's own panning/zooming afterwards, or FitToFilter/RecenterOnDestinationChange
+// on later renders. Skipped when a filter is already active (FitToFilter owns the fit
+// in that case) or the map is deep-linking to one specific place (FocusOnPlace owns it).
+function FitToAllOnLoad({ restaurants, skip }: { restaurants: GeoRestaurant[]; skip: boolean }) {
+  const map = useMap();
+  const done = useRef(false);
+  const hasData = restaurants.length > 0;
+  useEffect(() => {
+    if (done.current || !map || skip || !hasData) return;
+    done.current = true;
+    const bounds = new google.maps.LatLngBounds();
+    restaurants.forEach((r) => bounds.extend({ lat: r.lat, lng: r.lng }));
+    animateFitBounds(map, bounds);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map, skip, hasData]);
   return null;
 }
 
@@ -181,6 +196,58 @@ function animateCameraTo(map: google.maps.Map, target: { lat: number; lng: numbe
   requestAnimationFrame(step);
 }
 
+// The Maps JS API has no synchronous "what zoom would fitBounds pick" query -- this
+// hand-rolls the standard Mercator-projection formula (the well-known getBoundsZoomLevel
+// approach) so bounds-fitting camera moves (FitToFilter, FitToAllOnLoad, ResetViewButton)
+// can animate through animateCameraTo like every other camera move here, instead of
+// fitBounds's own instant jump.
+function latRad(lat: number) {
+  const sin = Math.sin((lat * Math.PI) / 180);
+  const radX2 = Math.log((1 + sin) / (1 - sin)) / 2;
+  return Math.max(Math.min(radX2, Math.PI), -Math.PI) / 2;
+}
+
+function zoomForFraction(pixelSize: number, worldSize: number, fraction: number) {
+  return Math.log(pixelSize / worldSize / fraction) / Math.LN2;
+}
+
+// A zero-area (single-point) bounds has a lat/lng fraction of 0, which sends this to
+// +Infinity -- callers cap the result with FIT_MAX_ZOOM (Math.min(Infinity, cap) is a
+// no-op-safe way to land on the cap), matching fitBounds's own zero-area behavior.
+function getBoundsZoom(bounds: google.maps.LatLngBounds, mapPx: { width: number; height: number }) {
+  const WORLD_DIM = 256;
+  const ne = bounds.getNorthEast();
+  const sw = bounds.getSouthWest();
+
+  const latFraction = (latRad(ne.lat()) - latRad(sw.lat())) / Math.PI;
+  const lngDiff = ne.lng() - sw.lng();
+  const lngFraction = (lngDiff < 0 ? lngDiff + 360 : lngDiff) / 360;
+
+  const latZoom = zoomForFraction(mapPx.height, WORLD_DIM, latFraction);
+  const lngZoom = zoomForFraction(mapPx.width, WORLD_DIM, lngFraction);
+
+  return Math.floor(Math.min(latZoom, lngZoom));
+}
+
+// Same padding/maxZoom shape map.fitBounds() itself takes, but animates there via
+// animateCameraTo instead of snapping instantly.
+function animateFitBounds(
+  map: google.maps.Map,
+  bounds: google.maps.LatLngBounds,
+  { padding = 64, maxZoom = FIT_MAX_ZOOM }: { padding?: number; maxZoom?: number } = {}
+) {
+  const div = map.getDiv();
+  const width = div.clientWidth - padding * 2;
+  const height = div.clientHeight - padding * 2;
+  if (width <= 0 || height <= 0) {
+    map.fitBounds(bounds, padding);
+    return;
+  }
+  const center = bounds.getCenter();
+  const zoom = Math.min(getBoundsZoom(bounds, { width, height }), maxZoom);
+  animateCameraTo(map, { lat: center.lat(), lng: center.lng(), zoom });
+}
+
 // Centers the map on the browser's geolocation result. Kept as its own component (not
 // inline in MapView) since it needs useMap() -- same reason MapExpandButton is split
 // out above it. The located coordinates are reported up to MapView (rather than kept
@@ -211,7 +278,44 @@ function LocateMeButton({ onLocated }: { onLocated: (position: { lat: number; ln
       aria-label="Center on my location"
       className="flex h-12 w-12 items-center justify-center rounded-full bg-white/90 text-black/70 shadow backdrop-blur disabled:opacity-60 dark:bg-black/80 dark:text-white/70"
     >
-      <Target size={22} weight="bold" className={locating ? "animate-pulse" : undefined} />
+      <GpsFix size={22} weight="bold" className={locating ? "animate-pulse" : undefined} />
+    </button>
+  );
+}
+
+// Resets the camera back to the same view FitToAllOnLoad would've landed on: fit to
+// every geo-tagged restaurant, or (if none have a location yet) the destination's own
+// center/zoom -- same fallback FitToAllOnLoad and the <Map>'s defaultCenter/defaultZoom
+// already use elsewhere in this file.
+function ResetViewButton({
+  restaurants,
+  destination,
+}: {
+  restaurants: GeoRestaurant[];
+  destination: Destination | null;
+}) {
+  const map = useMap();
+
+  function handleClick() {
+    if (!map) return;
+    if (restaurants.length > 0) {
+      const bounds = new google.maps.LatLngBounds();
+      restaurants.forEach((r) => bounds.extend({ lat: r.lat, lng: r.lng }));
+      animateFitBounds(map, bounds);
+      return;
+    }
+    if (destination?.lat != null && destination?.lng != null) {
+      animateCameraTo(map, { lat: destination.lat, lng: destination.lng, zoom: DESTINATION_ZOOM });
+    }
+  }
+
+  return (
+    <button
+      onClick={handleClick}
+      aria-label="Reset map view"
+      className="flex h-12 w-12 items-center justify-center rounded-full bg-white/90 text-black/70 shadow backdrop-blur dark:bg-black/80 dark:text-white/70"
+    >
+      <Compass size={22} weight="bold" />
     </button>
   );
 }
@@ -257,6 +361,7 @@ export function MapView({
     matchesFilters(r, { typeIds, tagIds, areaIds, favouritesOnly: false })
   );
   const geoTagged = filtered.filter(isGeoTagged);
+  const filtersActive = typeIds.length > 0 || tagIds.length > 0 || areaIds.length > 0;
 
   const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
   if (!apiKey) {
@@ -298,10 +403,8 @@ export function MapView({
             cameraControl={false}
             onClick={() => setSelectedId(null)}
           >
-            <FitToFilter
-              active={typeIds.length > 0 || tagIds.length > 0 || areaIds.length > 0}
-              restaurants={geoTagged}
-            />
+            <FitToFilter active={filtersActive} restaurants={geoTagged} />
+            <FitToAllOnLoad restaurants={geoTagged} skip={filtersActive || Boolean(focusPlaceId)} />
             {activeDestination && <RecenterOnDestinationChange destination={activeDestination} />}
             <FocusOnPlace restaurant={focusedRestaurant} />
             {geoTagged.map((r) => (
@@ -319,8 +422,9 @@ export function MapView({
             centerRef={centerBeforeResize}
           />
 
-          {/* Desktop: independent corner button + centered card, unchanged. */}
-          <div className="absolute bottom-4 right-4 z-20 hidden md:block">
+          {/* Desktop: independent corner buttons + centered card, unchanged. */}
+          <div className="absolute bottom-4 right-4 z-20 hidden flex-col gap-3 md:flex">
+            <ResetViewButton restaurants={geoTagged} destination={activeDestination} />
             <LocateMeButton onLocated={setUserLocation} />
           </div>
           <div className="hidden md:block">
@@ -328,9 +432,12 @@ export function MapView({
           </div>
 
           {/* Mobile: one bottom-anchored flex column so the full-width card sliding in
-              pushes the locate button (and future stacked buttons) up above it. */}
+              pushes the buttons up above it. */}
           <div className="absolute inset-x-0 bottom-0 z-20 flex flex-col gap-3 md:hidden">
-            <div className={`flex justify-end pr-4 ${selectedRestaurant ? "" : "pb-4"}`}>
+            <div
+              className={`flex flex-col items-end gap-3 pr-4 ${selectedRestaurant ? "" : "pb-4"}`}
+            >
+              <ResetViewButton restaurants={geoTagged} destination={activeDestination} />
               <LocateMeButton onLocated={setUserLocation} />
             </div>
             <MapBottomCard

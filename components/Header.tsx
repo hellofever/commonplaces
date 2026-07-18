@@ -3,10 +3,10 @@
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Gear, List as ListIcon, MagnifyingGlass, Plus } from "@phosphor-icons/react";
+import { Gear, List as ListIcon, Plus } from "@phosphor-icons/react";
 import { BottomSheet } from "./BottomSheet";
 import { Settings } from "./Settings";
-import { MapSearchExpand } from "./MapSearchExpand";
+import { MapSearchExpand, SearchField } from "./MapSearchExpand";
 import { DestinationSwitcher } from "./DestinationSwitcher";
 
 const TABS = [
@@ -57,25 +57,13 @@ export function Header({ onAdd }: { onAdd: () => void }) {
           {pathname === "/" ? (
             <MapSearchExpand />
           ) : (
-            <div className="relative w-full">
-              <MagnifyingGlass
-                size={16}
-                className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-black/40 dark:text-white/40"
-              />
-              <input
-                type="search"
-                value={q}
-                onChange={(e) => handleSearch(e.target.value)}
-                placeholder="Search restaurants…"
-                className="w-full rounded-full border border-black/10 bg-black/[.03] py-2 pl-9 pr-4 text-sm outline-none focus:border-black/30 dark:border-white/10 dark:bg-white/[.06] dark:focus:border-white/30"
-              />
-            </div>
+            <SearchField value={q} onChange={handleSearch} placeholder="Search restaurants…" />
           )}
         </div>
       </div>
 
       {/* Desktop */}
-      <div className="hidden md:flex md:flex-wrap md:items-center md:gap-3">
+      <div className="relative hidden md:flex md:flex-wrap md:items-center md:justify-between md:gap-3">
         <div className="flex items-center gap-4">
           <span className="text-lg font-semibold tracking-tight">CP Places</span>
           <DestinationSwitcher />
@@ -98,23 +86,11 @@ export function Header({ onAdd }: { onAdd: () => void }) {
             })}
           </nav>
         </div>
-        <div className="flex flex-1 justify-center">
+        <div className="md:absolute md:left-1/2 md:top-1/2 md:w-full md:max-w-[600px] md:-translate-x-1/2 md:-translate-y-1/2">
           {pathname === "/" ? (
             <MapSearchExpand />
           ) : (
-            <div className="relative w-full max-w-xs">
-              <MagnifyingGlass
-                size={16}
-                className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-black/40 dark:text-white/40"
-              />
-              <input
-                type="search"
-                value={q}
-                onChange={(e) => handleSearch(e.target.value)}
-                placeholder="Search restaurants…"
-                className="w-full rounded-full border border-black/10 bg-black/[.03] py-2 pl-9 pr-4 text-sm outline-none focus:border-black/30 dark:border-white/10 dark:bg-white/[.06] dark:focus:border-white/30"
-              />
-            </div>
+            <SearchField value={q} onChange={handleSearch} placeholder="Search restaurants…" />
           )}
         </div>
         <div className="flex items-center gap-2">

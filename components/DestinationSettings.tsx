@@ -14,6 +14,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { PlaceSearchPicker, type PlacePickResult } from "./PlaceSearchPicker";
+import { useOptimisticSave } from "@/lib/useOptimisticSave";
 import { useRestaurantUI } from "./AppShell";
 import { deleteDestination, updateDestination, type Destination } from "@/lib/destinations";
 
@@ -41,66 +42,85 @@ function ActiveDestinationSettings({ destination }: { destination: Destination }
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const { run, isPending, isError } = useOptimisticSave();
 
   const [name, setName] = useState(destination.name);
   const [pickingLocation, setPickingLocation] = useState(false);
-  const [savingLocation, setSavingLocation] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
-  const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function commitName(next: string) {
+  function commitName(next: string) {
     const trimmed = next.trim();
     if (!trimmed || trimmed === destination.name) {
       setName(destination.name);
       return;
     }
-    const updated = await updateDestination(destination.id, { name: trimmed });
-    patchDestinationCache(updated);
+    const original = destination;
+    run("name", {
+      apply: () => patchDestinationCache({ ...destination, name: trimmed }),
+      revert: () => {
+        patchDestinationCache(original);
+        setName(original.name);
+      },
+      write: () => updateDestination(destination.id, { name: trimmed }),
+    });
   }
 
-  async function handleLocationPick(result: PlacePickResult) {
+  function handleLocationPick(result: PlacePickResult) {
     if (result.lat == null || result.lng == null) {
       setError("Couldn't resolve a location for that place — try a different result.");
       return;
     }
-    setSavingLocation(true);
+    const lat = result.lat;
+    const lng = result.lng;
     setError(null);
-    try {
-      const updated = await updateDestination(destination.id, {
-        google_place_id: result.placeId,
-        lat: result.lat,
-        lng: result.lng,
-      });
-      patchDestinationCache(updated);
-      setPickingLocation(false);
-    } finally {
-      setSavingLocation(false);
-    }
+    const original = destination;
+    run("location", {
+      apply: () => {
+        patchDestinationCache({ ...destination, google_place_id: result.placeId, lat, lng });
+        setPickingLocation(false);
+      },
+      revert: () => {
+        patchDestinationCache(original);
+        setPickingLocation(true);
+      },
+      write: async () => {
+        try {
+          return await updateDestination(destination.id, { google_place_id: result.placeId, lat, lng });
+        } catch (err) {
+          setError(err instanceof Error ? err.message : "Something went wrong.");
+          throw err;
+        }
+      },
+    });
   }
 
   const restaurantCount = restaurants.length;
   const isOnlyDestination = destinations.length <= 1;
 
-  async function handleDeleteConfirmed() {
-    setDeleting(true);
+  function handleDeleteConfirmed() {
     setError(null);
-    try {
-      await deleteDestination(destination.id);
-      removeDestinationFromCache(destination.id);
-
-      const remaining = destinations.filter((d) => d.id !== destination.id);
-      const params = new URLSearchParams(searchParams.toString());
-      if (remaining[0]) params.set("destination", remaining[0].id);
-      else params.delete("destination");
-      router.replace(`${pathname}?${params.toString()}`);
-
-      setConfirmingDelete(false);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong.");
-    } finally {
-      setDeleting(false);
-    }
+    run("delete", {
+      apply: () => {},
+      revert: () => {},
+      write: async () => {
+        try {
+          await deleteDestination(destination.id);
+        } catch (err) {
+          setError(err instanceof Error ? err.message : "Something went wrong.");
+          throw err;
+        }
+      },
+      onSuccess: () => {
+        removeDestinationFromCache(destination.id);
+        const remaining = destinations.filter((d) => d.id !== destination.id);
+        const params = new URLSearchParams(searchParams.toString());
+        if (remaining[0]) params.set("destination", remaining[0].id);
+        else params.delete("destination");
+        router.replace(`${pathname}?${params.toString()}`);
+        setConfirmingDelete(false);
+      },
+    });
   }
 
   return (
@@ -120,8 +140,13 @@ function ActiveDestinationSettings({ destination }: { destination: Destination }
               (e.target as HTMLInputElement).blur();
             }
           }}
-          className={`w-full max-w-xs ${inputClass}`}
+          className={`w-full max-w-xs ${inputClass} ${
+            isError("name") ? "border-red-500 ring-2 ring-red-500" : ""
+          }`}
         />
+        {isError("name") && (
+          <p className="text-sm text-red-600 dark:text-red-400">Something went wrong. Try again.</p>
+        )}
       </label>
 
       <div className="flex flex-col gap-1.5">
@@ -153,7 +178,7 @@ function ActiveDestinationSettings({ destination }: { destination: Destination }
               placeholder="City or country, e.g. Mexico City, Mexico"
               onPick={handleLocationPick}
             />
-            {savingLocation && (
+            {isPending("location") && (
               <p className="text-sm text-black/50 dark:text-white/50">Saving…</p>
             )}
             <button
@@ -192,14 +217,17 @@ function ActiveDestinationSettings({ destination }: { destination: Destination }
                   : "This can't be undone."}
             </AlertDialogDescription>
           </AlertDialogHeader>
+          {isError("delete") && error && (
+            <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
+          )}
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
               variant="destructive"
               onClick={handleDeleteConfirmed}
-              disabled={deleting || isOnlyDestination || restaurantCount > 0}
+              disabled={isPending("delete") || isOnlyDestination || restaurantCount > 0}
             >
-              {deleting ? "Deleting…" : "Delete"}
+              {isPending("delete") ? "Deleting…" : "Delete"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

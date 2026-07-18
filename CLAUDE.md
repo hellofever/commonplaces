@@ -200,9 +200,6 @@ signal each page's data fetch listens for.
   a restaurant exists there. This was a unilateral scope call made during implementation,
   not an explicitly confirmed decision — flag if you actually want every cell in that row
   draftable ahead of save.
-- Sheet's column-header sort indicator is plain "▲"/"▼" text, not a Phosphor icon like the
-  rest of the app's icons — an inconsistency noticed after the Phosphor migration, not yet
-  fixed.
 - Auth check is client-side only (no `@supabase/ssr` middleware/proxy setup) — acceptable
   because the real security boundary is Postgres RLS, not the client gate. Worth adding
   proper SSR session handling later for a cleaner logged-out experience.

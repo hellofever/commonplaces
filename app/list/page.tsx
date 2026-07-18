@@ -2,12 +2,13 @@
 
 import { useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { MapPin, Trash } from "@phosphor-icons/react";
+import { CaretDown, CaretRight, CaretUp, MapPin, Star, Trash } from "@phosphor-icons/react";
 import { deleteRestaurants } from "@/lib/restaurants";
-import { tagColor } from "@/lib/tags";
+import { PHOSPHOR_ICON_MAP, tagColor, tagIcon, tagMapColor } from "@/lib/tags";
 import { matchesQuery } from "@/lib/search";
 import { useRestaurantUI } from "@/components/AppShell";
 import { BottomSheet } from "@/components/BottomSheet";
+import { Dropdown, dropdownTriggerClass } from "@/components/Dropdown";
 import { ListFilters, matchesFilters, type FilterState } from "@/components/ListFilters";
 import { DEFAULT_SORT, SORT_OPTIONS, groupByArea, isSortKey, sortRestaurants } from "@/lib/sort";
 import type { Restaurant } from "@/lib/types";
@@ -21,6 +22,7 @@ function RestaurantRow({
   onClick: () => void;
   onContextMenu: (e: React.MouseEvent) => void;
 }) {
+  const Icon = PHOSPHOR_ICON_MAP[tagIcon(r.primaryTag)];
   return (
     <button
       onClick={onClick}
@@ -28,27 +30,43 @@ function RestaurantRow({
       className="flex items-center gap-3 rounded-lg border border-black/10 px-3 py-2.5 text-left dark:border-white/10"
     >
       <span
-        className="h-2 w-2 flex-none rounded-full"
-        style={{ background: tagColor(r.primaryTag) }}
-      />
+        className="flex h-7 w-7 flex-none items-center justify-center rounded-full"
+        style={{ background: tagMapColor(r.primaryTag) }}
+      >
+        <Icon size={14} weight="bold" color="#ffffff" />
+      </span>
       <span className="min-w-0 flex-1">
-        <span className="block text-sm font-medium">
-          {r.is_favourite && <span className="text-[#bd5a1f]">★ </span>}
+        <span className="block text-sm font-bold">
+          {r.is_favourite && (
+            <Star size={14} weight="fill" className="mr-1 inline-block align-[-2px] text-[#bd5a1f]" />
+          )}
           {r.name}
         </span>
         <span className="block truncate text-xs text-black/50 dark:text-white/50">
-          {[
-            ...r.areas.map((a) => a.name),
-            ...r.types.map((t) => t.name),
-            ...r.tags.map((t) => t.name),
-            r.website,
-            r.notes,
-          ]
-            .filter(Boolean)
-            .join(" · ") || r.address}
+          {r.types.length > 0 &&
+            r.types.map((t, i) => (
+              <span key={t.id} style={{ color: tagColor(t) }}>
+                {i > 0 && ", "}
+                {t.name}
+              </span>
+            ))}
+          {r.areas.length > 0 && (
+            <>
+              {r.types.length > 0 && " · "}
+              <MapPin size={12} weight="bold" className="mr-0.5 inline-block align-[-1px]" />
+              {r.areas.map((a) => a.name).join(", ")}
+            </>
+          )}
+          {r.tags.length > 0 && (
+            <>
+              {(r.types.length > 0 || r.areas.length > 0) && " · "}
+              {r.tags.map((t) => t.name).join(", ")}
+            </>
+          )}
+          {r.types.length === 0 && r.areas.length === 0 && r.tags.length === 0 && r.address}
         </span>
       </span>
-      <span className="text-black/40">›</span>
+      <CaretRight size={18} className="flex-none text-black/40" />
     </button>
   );
 }
@@ -158,17 +176,33 @@ export default function ListPage() {
           onChange={updateFilters}
           className="flex flex-col gap-2"
           trailing={
-            <select
-              value={sort}
-              onChange={(e) => updateSort(e.target.value)}
-              className="rounded-full border border-black/10 px-3 py-1.5 text-xs text-black/70 dark:border-white/10 dark:bg-white/5 dark:text-white/70"
+            <Dropdown
+              key={sort}
+              panelClassName="w-52"
+              trigger={({ open, toggle }) => (
+                <button type="button" onClick={toggle} className={dropdownTriggerClass}>
+                  {SORT_OPTIONS.find((o) => o.value === sort)?.label ?? "Sort"}
+                  {open ? <CaretUp size={12} weight="bold" /> : <CaretDown size={12} weight="bold" />}
+                </button>
+              )}
             >
-              {SORT_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
+              <div className="flex flex-col gap-1">
+                {SORT_OPTIONS.map((o) => (
+                  <button
+                    key={o.value}
+                    type="button"
+                    onClick={() => updateSort(o.value)}
+                    className={`rounded-md px-2.5 py-1.5 text-left text-sm ${
+                      o.value === sort
+                        ? "bg-black/[.04] font-medium dark:bg-white/[.08]"
+                        : "hover:bg-black/[.03] dark:hover:bg-white/[.05]"
+                    }`}
+                  >
+                    {o.label}
+                  </button>
+                ))}
+              </div>
+            </Dropdown>
           }
         />
       </div>

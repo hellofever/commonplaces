@@ -95,7 +95,7 @@ export function RestaurantDetailView({
             className={favourite ? "text-[#bd5a1f]" : "text-black/30 dark:text-white/30"}
           />
         </button>
-        <h2 className="text-lg font-semibold">{restaurant.name}</h2>
+        <h2 className="text-lg font-bold">{restaurant.name}</h2>
       </div>
 
       <div className="flex flex-wrap items-center gap-1.5">

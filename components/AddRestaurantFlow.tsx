@@ -198,7 +198,7 @@ export function AddRestaurantFlow({
               onClick={() => pickResult(r)}
               className="flex flex-col rounded-lg border border-black/10 px-3 py-2 text-left text-sm hover:bg-black/[.03] dark:border-white/10 dark:hover:bg-white/5"
             >
-              <span className="font-medium">{r.name}</span>
+              <span className="font-bold">{r.name}</span>
               <span className="text-black/60 dark:text-white/60">{r.address}</span>
             </button>
           ))}

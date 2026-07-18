@@ -21,13 +21,13 @@ interface SelectedChip {
 // looks like a single search input but actually holds the active type/tag/area filters
 // as removable chips ahead of the free-text query, so a filter picked in the panel below
 // stays visible (and removable) without reopening the panel.
-function SearchField({
+export function SearchField({
   value,
   onChange,
   onFocus,
   placeholder,
-  chips,
-  onRemoveChip,
+  chips = [],
+  onRemoveChip = () => {},
   autoFocus,
   className = "",
 }: {
@@ -35,14 +35,14 @@ function SearchField({
   onChange: (value: string) => void;
   onFocus?: () => void;
   placeholder: string;
-  chips: SelectedChip[];
-  onRemoveChip: (kind: FilterKind, id: string) => void;
+  chips?: SelectedChip[];
+  onRemoveChip?: (kind: FilterKind, id: string) => void;
   autoFocus?: boolean;
   className?: string;
 }) {
   return (
     <div
-      className={`flex w-full items-center gap-1.5 overflow-x-auto rounded-full border border-black/10 bg-black/[.03] py-1.5 pl-3 pr-3 dark:border-white/10 dark:bg-white/[.06] ${className}`}
+      className={`flex w-full items-center gap-1.5 overflow-x-auto rounded-full border border-black/10 bg-black/[.03] py-1.5 pl-3 pr-3 focus-within:border-black/30 dark:border-white/10 dark:bg-white/[.06] dark:focus-within:border-white/30 ${className}`}
     >
       <MagnifyingGlass size={16} className="shrink-0 text-black/40 dark:text-white/40" />
       {chips.map((chip) => (
@@ -206,7 +206,7 @@ export function MapSearchExpand() {
   );
 
   return (
-    <div ref={containerRef} className="relative w-full md:max-w-xs">
+    <div ref={containerRef} className="relative w-full">
       <SearchField
         value={value}
         onChange={setValue}

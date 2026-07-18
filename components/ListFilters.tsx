@@ -1,5 +1,6 @@
 "use client";
 
+import { CaretDown, CaretUp } from "@phosphor-icons/react";
 import { Dropdown, dropdownTriggerClass } from "@/components/Dropdown";
 import { TagPills } from "@/components/TagPills";
 import type { Tag } from "@/lib/tags";
@@ -85,7 +86,7 @@ export function ListFilters({
           trigger={({ open, toggle }) => (
             <button type="button" onClick={toggle} className={dropdownTriggerClass}>
               Filters{activeCount > 0 ? ` (${activeCount})` : ""}
-              <span className="text-black/40">{open ? "▲" : "▼"}</span>
+              {open ? <CaretUp size={12} weight="bold" /> : <CaretDown size={12} weight="bold" />}
             </button>
           )}
         >

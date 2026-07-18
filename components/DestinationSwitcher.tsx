@@ -2,8 +2,8 @@
 
 import { useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { CaretDown } from "@phosphor-icons/react";
-import { Dropdown, dropdownTriggerClass } from "./Dropdown";
+import { CaretDown, Check } from "@phosphor-icons/react";
+import { Dropdown } from "./Dropdown";
 import { BottomSheet } from "./BottomSheet";
 import { PlaceSearchPicker, type PlacePickResult } from "./PlaceSearchPicker";
 import { useRestaurantUI } from "./AppShell";
@@ -36,26 +36,33 @@ export function DestinationSwitcher({ beforeOpenCreate }: { beforeOpenCreate?: (
       <Dropdown
         key={activeDestinationId ?? "none"}
         trigger={({ toggle }) => (
-          <button onClick={toggle} className={dropdownTriggerClass}>
-            {active?.name ?? "Destination"}
-            <CaretDown size={12} weight="bold" />
+          <button
+            onClick={toggle}
+            aria-label={active?.name ?? "Destination"}
+            className="flex h-9 w-9 items-center justify-center rounded-lg border border-black/10 text-black/60 dark:border-white/10 dark:text-white/60"
+          >
+            <CaretDown size={14} weight="bold" />
           </button>
         )}
       >
         <div className="flex flex-col gap-1">
-          {destinations.map((d) => (
-            <button
-              key={d.id}
-              onClick={() => switchTo(d.id)}
-              className={`rounded-md px-2.5 py-1.5 text-left text-sm ${
-                d.id === activeDestinationId
-                  ? "bg-black/[.04] font-medium dark:bg-white/[.08]"
-                  : "hover:bg-black/[.03] dark:hover:bg-white/[.05]"
-              }`}
-            >
-              {d.name}
-            </button>
-          ))}
+          {destinations.map((d) => {
+            const isActive = d.id === activeDestinationId;
+            return (
+              <button
+                key={d.id}
+                onClick={() => switchTo(d.id)}
+                className={`flex items-center justify-between gap-2 rounded-md px-2.5 py-1.5 text-left text-sm ${
+                  isActive
+                    ? "bg-black/[.04] font-medium text-[#bd5a1f] dark:bg-white/[.08]"
+                    : "hover:bg-black/[.03] dark:hover:bg-white/[.05]"
+                }`}
+              >
+                {d.name}
+                {isActive && <Check size={14} weight="bold" className="text-[#bd5a1f]" />}
+              </button>
+            );
+          })}
           <div className="mt-1 border-t border-black/10 pt-1 dark:border-white/10">
             <button
               onClick={() => {
