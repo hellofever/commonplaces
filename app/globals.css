@@ -87,6 +87,28 @@
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
+
+  /* Type-tag palette (see lib/colorTokens.ts) -- map pin uses -map (500, fixed);
+     tag pill background uses -tag (700 in light, overridden to 300 in .dark below --
+     darker in light mode / lighter in dark mode, for contrast against the white pill text). */
+  --type-pink-map: #e05299;
+  --type-pink-tag: #b01763;
+  --type-red-map: #ff2139;
+  --type-red-tag: #bb0014;
+  --type-amber-map: #ff9000;
+  --type-amber-tag: #a65e00;
+  --type-yellow-map: #ffc527;
+  --type-yellow-tag: #bf8c00;
+  --type-green-map: #84c062;
+  --type-green-tag: #528b32;
+  --type-teal-map: #00ad89;
+  --type-teal-tag: #007059;
+  --type-cyan-map: #2d928f;
+  --type-cyan-tag: #1a6260;
+  --type-blue-map: #006fa6;
+  --type-blue-tag: #00486c;
+  --type-purple-map: #5b4d9a;
+  --type-purple-tag: #3a3067;
 }
 
 .dark {
@@ -121,6 +143,19 @@
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.556 0 0);
+
+  /* Tag pill background swaps to the 300 shade in dark mode for contrast against the
+     dark page background; map pin (-map) stays at 500 in both themes, so it's not
+     overridden here. */
+  --type-pink-tag: #e898c0;
+  --type-red-tag: #fa7c8a;
+  --type-amber-tag: #f9ba68;
+  --type-yellow-tag: #fad97f;
+  --type-green-tag: #b4d6a1;
+  --type-teal-tag: #72d8c3;
+  --type-cyan-tag: #6dcdca;
+  --type-blue-tag: #34b6f7;
+  --type-purple-tag: #988fc4;
 }
 
 @layer base {

@@ -20,11 +20,11 @@ import {
   tagColor,
   tagIcon,
   TAG_ICONS,
-  TAG_PALETTE,
   updateTag,
   type Tag,
   type TagKind,
 } from "@/lib/tags";
+import { swatchColor, TYPE_HUES, type TypeHue } from "@/lib/colorTokens";
 import { useRestaurantUI } from "./AppShell";
 
 // One list+add+delete section per taxonomy facet (Type/Tags/Area), used 3x by
@@ -51,14 +51,14 @@ export function TagManagerSection({
   const [showCreate, setShowCreate] = useState(false);
   const [createValue, setCreateValue] = useState("");
   const [createIcon, setCreateIcon] = useState<string>(TAG_ICONS[0]);
-  const [createColor, setCreateColor] = useState<string>(TAG_PALETTE[0]);
+  const [createColor, setCreateColor] = useState<TypeHue>(TYPE_HUES[0]);
   const [creating, setCreating] = useState(false);
 
   function toggleExpand(id: string, field: "color" | "icon") {
     setExpanded((prev) => (prev?.id === id && prev.field === field ? null : { id, field }));
   }
 
-  async function handleColorPick(tag: Tag, color: string) {
+  async function handleColorPick(tag: Tag, color: TypeHue) {
     setExpanded(null);
     const updated = await updateTag(tag.id, { color });
     patchTagCache(updated);
@@ -92,7 +92,7 @@ export function TagManagerSection({
   function resetCreateForm() {
     setCreateValue("");
     setCreateIcon(TAG_ICONS[0]);
-    setCreateColor(TAG_PALETTE[0]);
+    setCreateColor(TYPE_HUES[0]);
   }
 
   async function handleCreate() {
@@ -188,19 +188,19 @@ export function TagManagerSection({
 
               {expanded?.id === tag.id && expanded.field === "color" && (
                 <div className="flex flex-wrap gap-1.5 py-2 pr-2 pl-11">
-                  {TAG_PALETTE.map((color) => {
-                    const active = tagColor(tag) === color;
+                  {TYPE_HUES.map((hue) => {
+                    const active = tag.color === hue;
                     return (
                       <button
-                        key={color}
+                        key={hue}
                         type="button"
-                        onClick={() => handleColorPick(tag, color)}
-                        aria-label={color}
+                        onClick={() => handleColorPick(tag, hue)}
+                        aria-label={hue}
                         aria-pressed={active}
                         className={`h-7 w-7 rounded-full border-2 ${
                           active ? "border-black dark:border-white" : "border-transparent"
                         }`}
-                        style={{ background: color }}
+                        style={{ background: swatchColor(hue) }}
                       />
                     );
                   })}
@@ -276,19 +276,19 @@ export function TagManagerSection({
                 })}
               </div>
               <div className="flex flex-wrap gap-1.5">
-                {TAG_PALETTE.map((color) => {
-                  const active = createColor === color;
+                {TYPE_HUES.map((hue) => {
+                  const active = createColor === hue;
                   return (
                     <button
-                      key={color}
+                      key={hue}
                       type="button"
-                      onClick={() => setCreateColor(color)}
-                      aria-label={color}
+                      onClick={() => setCreateColor(hue)}
+                      aria-label={hue}
                       aria-pressed={active}
                       className={`h-7 w-7 rounded-full border-2 ${
                         active ? "border-black dark:border-white" : "border-transparent"
                       }`}
-                      style={{ background: color }}
+                      style={{ background: swatchColor(hue) }}
                     />
                   );
                 })}

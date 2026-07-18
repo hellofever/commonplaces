@@ -1,6 +1,7 @@
 import type { ComponentType } from "react";
 import * as PhosphorIcons from "@phosphor-icons/react";
 import { supabase } from "./supabase";
+import { isTypeHue, mapColorVar, tagColorVar, TYPE_HUES, type TypeHue } from "./colorTokens";
 
 // Loose lookup-by-name so a tag's icon (see TAG_ICONS below) resolves to its component
 // without an import per icon -- PhosphorIcons is typed loosely here because its module
@@ -23,25 +24,6 @@ export interface Tag {
   created_at: string;
 }
 
-// Rotating palette for auto-assigning a color to newly created tags (kind='type' only --
-// tags/area rows don't need one, since pin color comes from primary_tag_id, not
-// the other facets).
-// Matches the seed data in supabase/migrations/0001_init.sql -- new tags continue the
-// rotation from wherever the existing tag count leaves off.
-export const TAG_PALETTE = [
-  "#3d6e63", // teal
-  "#b6892c", // ochre
-  "#7a4a6b", // plum
-  "#4c5f8a", // dusty blue
-  "#9c3f34", // brick
-  "#5f7a3d", // moss
-  "#8a6a4c", // coffee
-  "#4a7a8a", // slate teal
-  "#8a4a5f", // wine
-  "#6b6b3d", // olive
-  "#5a4a8a", // indigo
-  "#3d5f4c", // pine
-];
 
 export async function fetchTags(kind: TagKind): Promise<Tag[]> {
   const { data, error } = await supabase
@@ -58,7 +40,7 @@ export async function createTag(
   kind: TagKind,
   name: string,
   icon?: string | null,
-  color?: string | null
+  color?: TypeHue | null
 ): Promise<Tag> {
   const resolvedColor = kind === "type" ? (color ?? (await nextPaletteColor())) : null;
   const { data, error } = await supabase
@@ -73,7 +55,7 @@ export async function createTag(
 
 export async function updateTag(
   id: string,
-  updates: Partial<Pick<Tag, "color" | "icon">>
+  updates: Partial<{ color: TypeHue; icon: string | null }>
 ): Promise<Tag> {
   const { data, error } = await supabase.from("tags").update(updates).eq("id", id).select().single();
 
@@ -96,16 +78,24 @@ export async function countTagUsage(tagId: string): Promise<number> {
   return count ?? 0;
 }
 
-async function nextPaletteColor(): Promise<string> {
+async function nextPaletteColor(): Promise<TypeHue> {
   const { count } = await supabase
     .from("tags")
     .select("id", { count: "exact", head: true })
     .eq("kind", "type");
-  return TAG_PALETTE[(count ?? 0) % TAG_PALETTE.length];
+  return TYPE_HUES[(count ?? 0) % TYPE_HUES.length];
 }
 
+const FALLBACK_COLOR = "#5c6355";
+
+// Tag pill background (300 light / 700 dark, via CSS var -- see app/globals.css).
 export function tagColor(tag: Tag | null | undefined): string {
-  return tag?.color ?? "#5c6355";
+  return isTypeHue(tag?.color) ? tagColorVar(tag.color) : FALLBACK_COLOR;
+}
+
+// Map pin fill (500, same in light/dark).
+export function tagMapColor(tag: Tag | null | undefined): string {
+  return isTypeHue(tag?.color) ? mapColorVar(tag.color) : FALLBACK_COLOR;
 }
 
 // Curated set of Phosphor icon names offered when creating a new tag (see

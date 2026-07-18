@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { APIProvider, Map, AdvancedMarker, useMap } from "@vis.gl/react-google-maps";
 import { ArrowsHorizontal, Target } from "@phosphor-icons/react";
-import { PHOSPHOR_ICON_MAP, tagColor, tagIcon } from "@/lib/tags";
+import { PHOSPHOR_ICON_MAP, tagIcon, tagMapColor } from "@/lib/tags";
 import { useRestaurantUI } from "./AppShell";
 import { MapControlsDrawer } from "./MapControlsDrawer";
 import { MapBottomCard } from "./MapBottomCard";
@@ -113,7 +113,7 @@ function RestaurantMarker({
     >
       <div
         className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-white shadow"
-        style={{ background: tagColor(restaurant.primaryTag) }}
+        style={{ background: tagMapColor(restaurant.primaryTag) }}
       >
         <Icon size={16} weight="bold" color="#ffffff" />
       </div>

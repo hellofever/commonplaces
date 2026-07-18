@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { TagPicker } from "./TagPicker";
 import { PhotoUploader, type PhotoUploadState } from "./PhotoUploader";
 import { useRestaurantUI } from "./AppShell";
+import { tagColor } from "@/lib/tags";
 import type { Restaurant, RestaurantFormValues } from "@/lib/types";
 
 const EMPTY_PHOTO_UPLOAD_STATE: PhotoUploadState = { pendingStoragePaths: [], uploading: false };
@@ -130,11 +131,13 @@ export function RestaurantForm({
                 key={t.id}
                 type="button"
                 onClick={() => setPrimaryTagId(t.id)}
-                className="rounded-full border px-2.5 py-1 text-xs"
+                className={`rounded-full border px-2.5 py-1 text-xs ${
+                  primaryTagId === t.id ? "text-white dark:text-black" : ""
+                }`}
                 style={
                   primaryTagId === t.id
-                    ? { background: t.color ?? undefined, borderColor: t.color ?? undefined, color: "white" }
-                    : { borderColor: t.color ?? undefined, color: t.color ?? undefined }
+                    ? { background: tagColor(t), borderColor: tagColor(t) }
+                    : { borderColor: tagColor(t), color: tagColor(t) }
                 }
               >
                 {t.name}

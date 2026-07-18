@@ -31,10 +31,12 @@ export function TagPills({
               key={t.id}
               type="button"
               onClick={() => onToggle(t.id)}
-              className="flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs"
+              className={`flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs ${
+                active ? "text-white dark:text-black" : ""
+              }`}
               style={
                 active
-                  ? { background: tagColor(t), borderColor: tagColor(t), color: "white" }
+                  ? { background: tagColor(t), borderColor: tagColor(t) }
                   : { borderColor: tagColor(t), color: tagColor(t) }
               }
             >

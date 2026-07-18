@@ -78,7 +78,7 @@ export function RestaurantCardContent({
           return (
             <span
               key={t.id}
-              className="inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-medium text-white"
+              className="inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-medium text-white dark:text-black"
               style={{ background: tagColor(t), borderColor: tagColor(t) }}
             >
               {Icon && <Icon size={12} weight="fill" />}
