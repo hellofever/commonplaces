@@ -59,7 +59,7 @@ export function RestaurantCardContent({
             className={favourite ? "text-red-500" : "text-black/30 dark:text-white/30"}
           />
         </button>
-        <h3 className="min-w-0 flex-1 text-sm">{restaurant.name}</h3>
+        <h3 className="min-w-0 flex-1 text-sm font-medium">{restaurant.name}</h3>
         {onClose && (
           <button
             type="button"
@@ -106,7 +106,7 @@ export function RestaurantCardContent({
       </div>
 
       {restaurant.address && (
-        <p className="text-xs text-black/60 dark:text-white/60">{restaurant.address}</p>
+        <p className="text-xs font-medium">{restaurant.address}</p>
       )}
 
       {showActions && (
@@ -119,7 +119,7 @@ export function RestaurantCardContent({
               className="flex flex-1 flex-col items-center justify-center gap-1 rounded-lg border border-black/10 py-1.5 dark:border-white/10"
             >
               <NavigationArrow size={16} weight="bold" />
-              <span className="text-[11px]">Directions</span>
+              <span className="text-[11px] font-medium">Directions</span>
             </a>
           )}
           <button
@@ -127,14 +127,14 @@ export function RestaurantCardContent({
             className="flex flex-1 flex-col items-center justify-center gap-1 rounded-lg border border-black/10 py-1.5 dark:border-white/10"
           >
             <ArrowsOut size={16} weight="bold" />
-            <span className="text-[11px]">View more</span>
+            <span className="text-[11px] font-medium">View more</span>
           </button>
           <button
             onClick={() => openEdit(restaurant)}
             className="flex flex-1 flex-col items-center justify-center gap-1 rounded-lg border border-black/10 py-1.5 dark:border-white/10"
           >
             <PencilSimple size={16} weight="bold" />
-            <span className="text-[11px]">Edit place</span>
+            <span className="text-[11px] font-medium">Edit place</span>
           </button>
         </div>
       )}

@@ -1,11 +1,13 @@
 "use client";
 
-import { useState } from "react";
-import { MapPin, Star } from "@phosphor-icons/react";
+import { useEffect, useState } from "react";
+import { CaretDown, Globe, ImageSquare, MapPin, Phone, Star, Tag } from "@phosphor-icons/react";
 import { PHOSPHOR_ICON_MAP, tagColor, tagIcon } from "@/lib/tags";
 import { setFavourite } from "@/lib/restaurants";
+import { fetchRestaurantPhotos } from "@/lib/photos";
 import { useRestaurantUI } from "./AppShell";
 import { ModalHeader } from "./BottomSheet";
+import { FadeImage } from "./FadeImage";
 import type { OpeningPeriod, Restaurant } from "@/lib/types";
 
 // Indexed by Google's day-of-week convention (0 = Sunday), but displayed Monday-first.
@@ -66,6 +68,24 @@ export function RestaurantDetailView({
   const { patchRestaurantCache } = useRestaurantUI();
   const [favourite, setFavouriteState] = useState(restaurant.is_favourite);
   const [toggling, setToggling] = useState(false);
+  const [hoursOpen, setHoursOpen] = useState(false);
+  const [photos, setPhotos] = useState<{ id: string; url: string }[]>([]);
+  const [photosLoading, setPhotosLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchRestaurantPhotos(restaurant.id)
+      .then((data) => {
+        if (!cancelled) setPhotos(data);
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setPhotosLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [restaurant.id]);
 
   async function handleToggleFavourite() {
     const next = !favourite;
@@ -120,14 +140,6 @@ export function RestaurantDetailView({
             </span>
           );
         })}
-        {restaurant.tags.map((t) => (
-          <span
-            key={t.id}
-            className="inline-flex items-center gap-1 rounded-full border border-black/15 px-2.5 py-1 text-xs font-medium text-black/60 dark:border-white/15 dark:text-white/60"
-          >
-            {t.name}
-          </span>
-        ))}
         {restaurant.areas.map((a) => (
           <span
             key={a.id}
@@ -137,54 +149,131 @@ export function RestaurantDetailView({
             {a.name}
           </span>
         ))}
+        {restaurant.price_level && (
+          <span className="text-xs font-medium text-black/60 dark:text-white/60">
+            {"$".repeat(restaurant.price_level)}
+          </span>
+        )}
       </div>
 
-      {restaurant.price_level && (
-        <p className="text-sm text-black/70 dark:text-white/70">{"$".repeat(restaurant.price_level)}</p>
-      )}
-      {restaurant.address && (
-        <p className="text-sm text-black/70 dark:text-white/70">{restaurant.address}</p>
+      {restaurant.tags.length > 0 && (
+        <div className="flex items-center gap-2 text-sm text-black/60 dark:text-white/60">
+          <Tag size={14} className="shrink-0 text-black/40 dark:text-white/40" />
+          <span className="min-w-0 flex-1">{restaurant.tags.map((t) => t.name).join(", ")}</span>
+        </div>
       )}
 
-      {restaurant.opening_hours && restaurant.opening_hours.length > 0 ? (
-        <div className="flex flex-col gap-0.5 text-sm">
-          {hoursByDay(restaurant.opening_hours).map(({ day, ranges }) => (
-            <div key={day} className="flex justify-between gap-4">
-              <span>{day}</span>
-              <span
-                className={
-                  ranges.length > 0
-                    ? "text-black/70 dark:text-white/70"
-                    : "text-black/40 dark:text-white/40"
-                }
-              >
-                {ranges.length > 0 ? ranges.join(", ") : "Closed"}
-              </span>
+      <div className="-mx-1 flex gap-2 overflow-x-auto px-1">
+        {photosLoading ? (
+          Array.from({ length: 3 }).map((_, i) => (
+            <div
+              key={i}
+              className="h-28 w-28 shrink-0 animate-pulse rounded-lg bg-black/5 dark:bg-white/10"
+            />
+          ))
+        ) : photos.length > 0 ? (
+          photos.map((photo) => (
+            <FadeImage key={photo.id} src={photo.url} className="h-28 w-28 shrink-0 rounded-lg" />
+          ))
+        ) : (
+          <div className="flex h-28 w-28 shrink-0 items-center justify-center rounded-lg bg-black/5 dark:bg-white/10">
+            <ImageSquare size={28} weight="light" className="text-black/20 dark:text-white/20" />
+          </div>
+        )}
+      </div>
+
+      {(restaurant.address || restaurant.phone || websiteHref || restaurant.website) && (
+        <>
+          <div className="border-t border-black/10 dark:border-white/10" />
+          <div className="flex flex-col gap-1.5">
+            <h3 className="text-sm font-medium text-black/70 dark:text-white/70">Details</h3>
+            <div className="flex flex-col gap-0.5 text-sm">
+              {restaurant.address && (
+                <div className="flex items-center gap-2">
+                  <MapPin size={14} className="shrink-0 text-black/40 dark:text-white/40" />
+                  <span className="min-w-0 flex-1 font-medium text-black/70 dark:text-white/70">
+                    {restaurant.address}
+                  </span>
+                </div>
+              )}
+              {restaurant.phone && (
+                <div className="flex items-center gap-2">
+                  <Phone size={14} className="shrink-0 text-black/40 dark:text-white/40" />
+                  <span className="min-w-0 flex-1 font-medium text-black/70 dark:text-white/70">
+                    {restaurant.phone}
+                  </span>
+                </div>
+              )}
+              {(websiteHref || restaurant.website) && (
+                <div className="flex items-center gap-2">
+                  <Globe size={14} className="shrink-0 text-black/40 dark:text-white/40" />
+                  {websiteHref ? (
+                    <a
+                      href={websiteHref}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="min-w-0 flex-1 truncate font-medium text-red-500 underline"
+                    >
+                      {websiteHref}
+                    </a>
+                  ) : (
+                    <span className="min-w-0 flex-1 truncate font-medium text-black/70 dark:text-white/70">
+                      {restaurant.website}
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
-          ))}
-        </div>
-      ) : (
-        <p className="text-sm text-black/70 dark:text-white/70">Hours not set</p>
+          </div>
+        </>
       )}
-      {restaurant.phone && (
-        <p className="text-sm text-black/70 dark:text-white/70">{restaurant.phone}</p>
-      )}
-      {websiteHref ? (
-        <a
-          href={websiteHref}
-          target="_blank"
-          rel="noreferrer"
-          className="truncate text-sm text-red-500 underline"
+
+      <div className="border-t border-black/10 dark:border-white/10" />
+
+      <div className="flex flex-col gap-1.5">
+        <button
+          type="button"
+          onClick={() => setHoursOpen((o) => !o)}
+          className="flex items-center justify-between gap-2"
         >
-          {websiteHref}
-        </a>
-      ) : (
-        restaurant.website && (
-          <p className="truncate text-sm text-black/70 dark:text-white/70">{restaurant.website}</p>
-        )
-      )}
+          <h3 className="text-sm font-medium text-black/70 dark:text-white/70">Opening hours</h3>
+          <CaretDown
+            size={12}
+            weight="bold"
+            className={`text-black/40 transition-transform dark:text-white/40 ${hoursOpen ? "rotate-180" : ""}`}
+          />
+        </button>
+        {hoursOpen &&
+          (restaurant.opening_hours && restaurant.opening_hours.length > 0 ? (
+            <div className="flex flex-col gap-0.5 text-sm">
+              {hoursByDay(restaurant.opening_hours).map(({ day, ranges }) => (
+                <div key={day} className="flex justify-between gap-4">
+                  <span>{day}</span>
+                  <span
+                    className={
+                      ranges.length > 0
+                        ? "text-black/70 dark:text-white/70"
+                        : "text-black/40 dark:text-white/40"
+                    }
+                  >
+                    {ranges.length > 0 ? ranges.join(", ") : "Closed"}
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-black/70 dark:text-white/70">Hours not set</p>
+          ))}
+      </div>
+
       {restaurant.notes && (
-        <p className="text-sm italic text-black/60 dark:text-white/60">{restaurant.notes}</p>
+        <>
+          <div className="border-t border-black/10 dark:border-white/10" />
+          <div className="flex flex-col gap-1.5">
+            <h3 className="text-sm font-medium text-black/70 dark:text-white/70">Notes</h3>
+            <p className="text-sm italic text-black/60 dark:text-white/60">{restaurant.notes}</p>
+          </div>
+        </>
       )}
       <div className="mt-2 flex gap-2">
         {directionsUrl && (

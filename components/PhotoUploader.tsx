@@ -10,6 +10,7 @@ import {
   MAX_RESTAURANT_PHOTOS,
   uploadPhotoFile,
 } from "@/lib/photos";
+import { FadeImage } from "./FadeImage";
 
 type PhotoStatus = "uploading" | "done" | "error";
 
@@ -195,12 +196,10 @@ export function PhotoUploader({
         }`}
       >
         {photos.map((photo) => (
-          <div key={photo.key} className="relative h-20 w-20 overflow-hidden rounded-lg bg-black/5 dark:bg-white/10">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
+          <div key={photo.key} className="relative h-20 w-20 overflow-hidden rounded-lg">
+            <FadeImage
               src={photo.previewUrl}
-              alt=""
-              className={`h-full w-full object-cover ${photo.status === "uploading" ? "opacity-50" : ""}`}
+              className={`h-full w-full ${photo.status === "uploading" ? "opacity-50" : ""}`}
             />
 
             {photo.status !== "uploading" && (

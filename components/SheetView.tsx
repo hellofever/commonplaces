@@ -158,6 +158,10 @@ export function SheetView() {
   const [autoFit, setAutoFit] = useState(false);
   const [draggedColumn, setDraggedColumn] = useState<SheetColumn | null>(null);
   const [dragOverColumn, setDragOverColumn] = useState<SheetColumn | null>(null);
+  // Gates the table render (see the early return below) so the sheet never paints with
+  // default column order/widths and then visibly jumps to the saved layout a moment
+  // later -- we wait for the one saved-layout fetch instead.
+  const [prefsLoaded, setPrefsLoaded] = useState(false);
 
   // Loads the signed-in user's saved layout once on mount. Defensively filtered against
   // ALL_COLUMN_KEYS so a layout saved before a column existed (or after one's removed)
@@ -175,7 +179,10 @@ export function SheetView() {
         setHiddenColumns(new Set(prefs.hiddenColumns.filter((k) => known.has(k))));
         setColumnWidths((w) => ({ ...w, ...prefs.columnWidths }));
       })
-      .catch(console.error);
+      .catch(console.error)
+      .finally(() => {
+        if (!cancelled) setPrefsLoaded(true);
+      });
     return () => {
       cancelled = true;
     };
@@ -637,6 +644,14 @@ export function SheetView() {
     );
   }
 
+  if (!prefsLoaded) {
+    return (
+      <div className="flex flex-1 items-center justify-center p-6">
+        <p className="text-sm text-black/50 dark:text-white/50">Loading sheet…</p>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
       <div className="flex-none p-4 pb-2">
@@ -728,7 +743,7 @@ export function SheetView() {
 
       <div className="flex-1 overflow-auto p-4 pt-0">
         <table
-          className="border-collapse font-mono text-sm"
+          className="border-collapse font-sans text-sm"
           style={{ tableLayout: "fixed", width: autoFit ? "100%" : totalTableWidth }}
         >
           <colgroup>

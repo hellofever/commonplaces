@@ -20,6 +20,7 @@ import { matchesQuery } from "@/lib/search";
 import { useRestaurantUI } from "@/components/AppShell";
 import { BottomSheet, ModalHeader } from "@/components/BottomSheet";
 import { Dropdown, dropdownTriggerClass } from "@/components/Dropdown";
+import { FadeImage } from "@/components/FadeImage";
 import { ListFilters, matchesFilters, type FilterState } from "@/components/ListFilters";
 import { DEFAULT_SORT, SORT_OPTIONS, groupByArea, isSortKey, sortRestaurants } from "@/lib/sort";
 import type { Restaurant } from "@/lib/types";
@@ -112,8 +113,7 @@ function RestaurantCard({
     >
       <div className="aspect-[4/3] w-full flex-none overflow-hidden bg-black/5 dark:bg-white/10">
         {photoUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={photoUrl} alt="" className="h-full w-full object-cover" />
+          <FadeImage src={photoUrl} className="h-full w-full" />
         ) : (
           <div className="flex h-full w-full items-center justify-center">
             <ImageSquare size={28} weight="light" className="text-black/20 dark:text-white/20" />
