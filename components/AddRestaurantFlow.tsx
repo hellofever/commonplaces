@@ -5,7 +5,7 @@ import { RestaurantForm } from "./RestaurantForm";
 import { useRestaurantUI } from "./AppShell";
 import { ModalHeader } from "./BottomSheet";
 import { suggestTagName } from "@/lib/tags";
-import { findByPlaceId, insertRestaurant, updateRestaurant } from "@/lib/restaurants";
+import { deleteRestaurants, findByPlaceId, insertRestaurant, updateRestaurant } from "@/lib/restaurants";
 import { linkPendingPhotos } from "@/lib/photos";
 import { placesFetch } from "@/lib/placesApi";
 import type { Restaurant, RestaurantFormValues } from "@/lib/types";
@@ -47,7 +47,7 @@ export function AddRestaurantFlow({
   initialQuery?: string;
   onClose: () => void;
 }) {
-  const { activeDestinationId } = useRestaurantUI();
+  const { activeDestinationId, removeRestaurantsCache } = useRestaurantUI();
   const [step, setStep] = useState<"search" | "results" | "form">(editing ? "form" : "search");
   const [query, setQuery] = useState(initialQuery ?? "");
   const [results, setResults] = useState<SearchResult[]>([]);
@@ -126,6 +126,13 @@ export function AddRestaurantFlow({
     return saved;
   }
 
+  async function handleDelete() {
+    if (!editing) return;
+    await deleteRestaurants([editing.id]);
+    removeRestaurantsCache([editing.id]);
+    onClose();
+  }
+
   if (duplicate) {
     return (
       <div className="flex flex-col gap-3 py-5">
@@ -165,6 +172,7 @@ export function AddRestaurantFlow({
           restaurantId={editing?.id}
           onSubmit={handleSave}
           suggestedTagName={suggestedTagName}
+          onDelete={editing ? handleDelete : undefined}
         />
       </>
     );

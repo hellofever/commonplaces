@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { TagPicker } from "./TagPicker";
 import { PhotoUploader, type PhotoUploadState } from "./PhotoUploader";
+import { DeleteConfirmDialog } from "./DeleteConfirmDialog";
 import { useRestaurantUI } from "./AppShell";
 import { tagColor } from "@/lib/tags";
 import type { Restaurant, RestaurantFormValues } from "@/lib/types";
@@ -15,12 +16,14 @@ export function RestaurantForm({
   onSubmit,
   submitLabel = "Save place",
   suggestedTagName,
+  onDelete,
 }: {
   initial: Partial<RestaurantFormValues>;
   restaurantId?: string;
   onSubmit: (values: RestaurantFormValues, pendingPhotoPaths: string[]) => Promise<Restaurant>;
   submitLabel?: string;
   suggestedTagName?: string | null;
+  onDelete?: () => Promise<void> | void;
 }) {
   const [name, setName] = useState(initial.name ?? "");
   const [typeIds, setTypeIds] = useState<string[]>(initial.typeIds ?? []);
@@ -39,6 +42,8 @@ export function RestaurantForm({
   const [editingLocation, setEditingLocation] = useState(initial.lat === undefined);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   // Keep primaryTagId valid as the type selection changes: auto-pick when there's
   // exactly one, clear/reassign if the current primary was removed.
@@ -102,6 +107,17 @@ export function RestaurantForm({
       setError(err instanceof Error ? err.message : "Something went wrong.");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleDeleteConfirmed() {
+    if (!onDelete) return;
+    setDeleting(true);
+    try {
+      await onDelete();
+    } finally {
+      setDeleting(false);
+      setConfirmingDelete(false);
     }
   }
 
@@ -239,6 +255,16 @@ export function RestaurantForm({
 
       {error && <p className="text-sm text-red-600">{error}</p>}
 
+      {onDelete && (
+        <button
+          type="button"
+          onClick={() => setConfirmingDelete(true)}
+          className="text-sm font-medium text-red-500 underline underline-offset-2"
+        >
+          Delete place
+        </button>
+      )}
+
       <div className="sticky bottom-0 z-10 bg-popover pt-3 pb-[calc(1.25rem+env(safe-area-inset-bottom))]">
         <button
           type="submit"
@@ -248,6 +274,15 @@ export function RestaurantForm({
           {photoUpload.uploading ? "Uploading photos…" : saving ? "Saving…" : submitLabel}
         </button>
       </div>
+
+      {onDelete && (
+        <DeleteConfirmDialog
+          open={confirmingDelete}
+          onOpenChange={(open) => !deleting && setConfirmingDelete(open)}
+          title={`Delete ${name || "this place"}?`}
+          onConfirm={handleDeleteConfirmed}
+        />
+      )}
     </form>
   );
 }

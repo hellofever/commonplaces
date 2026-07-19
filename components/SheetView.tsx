@@ -16,18 +16,9 @@ import { matchesQuery } from "@/lib/search";
 import { fetchSheetColumnPrefs, saveSheetColumnPrefs } from "@/lib/sheetPrefs";
 import { useRestaurantUI } from "@/components/AppShell";
 import { BottomSheet, ModalHeader } from "@/components/BottomSheet";
+import { DeleteConfirmDialog } from "@/components/DeleteConfirmDialog";
 import { Dropdown, dropdownTriggerClass } from "@/components/Dropdown";
 import { ListFilters, matchesFilters, type FilterState } from "@/components/ListFilters";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -909,22 +900,12 @@ export function SheetView() {
         )}
       </BottomSheet>
 
-      <AlertDialog open={confirmingDelete} onOpenChange={setConfirmingDelete}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              Delete {selectedIds.size} restaurant{selectedIds.size === 1 ? "" : "s"}?
-            </AlertDialogTitle>
-            <AlertDialogDescription>This can&apos;t be undone.</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction variant="destructive" onClick={handleDeleteConfirmed}>
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <DeleteConfirmDialog
+        open={confirmingDelete}
+        onOpenChange={setConfirmingDelete}
+        title={`Delete ${selectedIds.size} restaurant${selectedIds.size === 1 ? "" : "s"}?`}
+        onConfirm={handleDeleteConfirmed}
+      />
     </div>
   );
 }
