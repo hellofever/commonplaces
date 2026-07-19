@@ -24,13 +24,19 @@ export const metadata: Metadata = {
   description: "Our favourite restaurants, on a map.",
 };
 
-// Disables the browser's own pinch/double-tap page zoom, which otherwise fights
-// with the Google Map's own pinch-to-zoom gesture on touch devices.
+// Page-wide pinch/double-tap zoom stays enabled (userScalable/maximumScale used to
+// disable it here, but that fights iOS Safari's own viewport math badly enough to
+// break fixed-position layout elsewhere on the page -- see MapView's `touch-none` on
+// the map div for the scoped replacement). viewportFit "cover" opts the page into
+// rendering under the notch/Dynamic Island/home-indicator area explicitly, so every
+// top/bottom-anchored fixed or sticky element must pad itself with
+// env(safe-area-inset-top/bottom) -- see Header, the mobile nav/Settings sheets, and
+// MapSearchExpand's overlay bar for the top-inset half of that (bottom-inset padding
+// already existed before this).
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  maximumScale: 1,
-  userScalable: false,
+  viewportFit: "cover",
 };
 
 export default function RootLayout({

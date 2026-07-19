@@ -426,8 +426,13 @@ export function MapView({
               </button>
             </div>
           )}
+          {/* touch-none: replaces the old page-wide viewport zoom-disable (see
+              app/layout.tsx) -- scoped here instead of globally, so only this element
+              tells the browser not to run its own pinch/double-tap zoom, leaving
+              gestureHandling="greedy" below as the sole owner of touch gestures over the
+              map without a page-level viewport vs. visual-viewport fight elsewhere. */}
           <Map
-            className="h-full w-full"
+            className="h-full w-full touch-none"
             defaultCenter={
               activeDestination?.lat != null && activeDestination?.lng != null
                 ? { lat: activeDestination.lat, lng: activeDestination.lng }

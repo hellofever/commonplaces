@@ -50,7 +50,7 @@ export function Header({ onAdd }: { onAdd: () => void }) {
   }
 
   return (
-    <header className="sticky top-0 z-20 border-b border-black/10 bg-white/90 px-4 py-3 backdrop-blur dark:border-white/10 dark:bg-black/80">
+    <header className="sticky top-0 z-20 border-b border-black/10 bg-white/90 px-4 pt-[calc(0.75rem+env(safe-area-inset-top))] pb-3 backdrop-blur dark:border-white/10 dark:bg-black/80">
       {/* Mobile */}
       <div className="flex items-center gap-3 md:hidden">
         <button
@@ -125,7 +125,7 @@ export function Header({ onAdd }: { onAdd: () => void }) {
         open={menuOpen}
         onClose={() => setMenuOpen(false)}
         widthClassName="md:max-w-md"
-        heightClassName="h-screen! md:h-fit!"
+        heightClassName="h-dvh! md:h-fit!"
       >
         <ModalHeader
           title={
@@ -135,6 +135,7 @@ export function Header({ onAdd }: { onAdd: () => void }) {
             </div>
           }
           onClose={() => setMenuOpen(false)}
+          className="pt-[env(safe-area-inset-top)] md:pt-0"
         />
         <nav className="mt-4 flex flex-col gap-1 text-sm">
           {TABS.map((tab) => {
@@ -183,12 +184,12 @@ export function Header({ onAdd }: { onAdd: () => void }) {
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}
         widthClassName="sm:max-w-2xl"
-        heightClassName="h-screen! sm:h-[600px]!"
+        heightClassName="h-dvh! sm:h-[600px]!"
       >
         <ModalHeader
           title={<h2 className="text-lg">Settings</h2>}
           onClose={() => setSettingsOpen(false)}
-          className="mb-4"
+          className="mb-4 pt-[env(safe-area-inset-top)] sm:pt-0"
         />
         <div className="flex min-h-0 flex-1 flex-col">
           <Settings />

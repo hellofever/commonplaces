@@ -245,7 +245,7 @@ export function MapSearchExpand() {
             ref={overlayRef}
             className="fixed inset-0 z-[9999] flex flex-col bg-white md:hidden dark:bg-black"
           >
-            <div className="flex items-center gap-3 border-b border-black/10 px-4 py-3 dark:border-white/10">
+            <div className="flex items-center gap-3 border-b border-black/10 px-4 pt-[calc(0.75rem+env(safe-area-inset-top))] pb-3 dark:border-white/10">
               <button
                 onClick={close}
                 aria-label="Close search"
