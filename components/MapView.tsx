@@ -410,7 +410,14 @@ export function MapView({
   return (
     <APIProvider apiKey={apiKey}>
       <div className="relative flex flex-1 flex-col md:flex-row">
-        <div className="relative min-h-0 min-w-0 flex-1 md:order-2">
+        {/* isolate: Google's Maps JS SDK renders its own internal panes/overlays (tile
+            layers, gesture-capture regions, marker panes) as descendants of this div with
+            z-index values it assigns itself, sometimes absurdly high -- without a stacking
+            context boundary here, one of those can end up painted (and, on touch devices,
+            hit-tested) above sticky page chrome like Header's search bar, even though it's
+            visually "just the map." isolate caps every z-index inside this subtree so
+            nothing Google renders can ever escape above a sibling like Header. */}
+        <div className="relative isolate min-h-0 min-w-0 flex-1 md:order-2">
           {restaurantsError && (
             <div className="absolute inset-x-0 top-4 z-10 mx-auto flex w-fit items-center gap-3 rounded-full bg-white/95 px-4 py-2 text-sm text-black/70 shadow dark:bg-black/85 dark:text-white/70">
               Couldn’t load places.
