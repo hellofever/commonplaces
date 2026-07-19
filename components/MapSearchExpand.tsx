@@ -33,7 +33,7 @@ export function SearchField({
 }: {
   value: string;
   onChange: (value: string) => void;
-  onFocus?: () => void;
+  onFocus?: (e: React.FocusEvent<HTMLInputElement>) => void;
   placeholder: string;
   chips?: SelectedChip[];
   onRemoveChip?: (kind: FilterKind, id: string) => void;
@@ -68,7 +68,10 @@ export function SearchField({
         onFocus={onFocus}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className="min-w-[4rem] flex-1 bg-transparent text-sm outline-none placeholder:text-black/40 dark:placeholder:text-white/40"
+        // text-base (16px), not text-sm: iOS Safari auto-zooms the page on focusing any
+        // input under 16px, which (only on Map view, see the collapsed-vs-overlay swap
+        // below) collides with a second input mounting on the same focus event.
+        className="min-w-[4rem] flex-1 bg-transparent text-base outline-none placeholder:text-black/40 dark:placeholder:text-white/40"
       />
     </div>
   );
@@ -96,6 +99,20 @@ export function MapSearchExpand() {
   const [expanded, setExpanded] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
+  // Mirrors the md: breakpoint (768px) that decides whether the portal overlay below
+  // mounts -- see handleCollapsedFocus, which needs to know this synchronously inside a
+  // focus event, before Tailwind's own responsive classes have had any bearing on it.
+  const isMobileRef = useRef(false);
+
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 767px)");
+    const update = () => {
+      isMobileRef.current = mq.matches;
+    };
+    update();
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, []);
 
   const typeIds = (searchParams.get("mapTypes") ?? "").split(",").filter(Boolean);
   const tagIds = (searchParams.get("mapTags") ?? "").split(",").filter(Boolean);
@@ -103,6 +120,16 @@ export function MapSearchExpand() {
 
   function open() {
     setExpanded(true);
+  }
+
+  // On mobile, focusing the collapsed field immediately hands off to a second,
+  // freshly-mounted <input autoFocus> in the full-screen portal overlay below -- two
+  // real inputs racing for the same native focus/keyboard within one tap. Blurring the
+  // collapsed one here (desktop never gets a second input, so it keeps normal focus)
+  // means only the overlay's input is ever actually focused, avoiding that race.
+  function handleCollapsedFocus(e: React.FocusEvent<HTMLInputElement>) {
+    if (isMobileRef.current) e.currentTarget.blur();
+    open();
   }
 
   function close() {
@@ -221,7 +248,7 @@ export function MapSearchExpand() {
       <SearchField
         value={value}
         onChange={setValue}
-        onFocus={open}
+        onFocus={handleCollapsedFocus}
         placeholder="Search restaurants…"
         chips={selectedChips}
         onRemoveChip={removeChip}
