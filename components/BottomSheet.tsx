@@ -17,19 +17,24 @@ export function BottomSheet({
   children,
   widthClassName = "sm:max-w-md",
   heightClassName = "max-h-[85vh] sm:h-fit!",
+  paddingClassName = "p-5",
 }: {
   open: boolean;
   onClose: () => void;
   children: React.ReactNode;
   widthClassName?: string;
   heightClassName?: string;
+  // Vertical padding is 0 for content that manages its own sticky top/bottom bars
+  // (e.g. AddRestaurantFlow's header/footer) -- otherwise the sheet's own padding
+  // leaves a gap those bars can't stick flush against.
+  paddingClassName?: string;
 }) {
   return (
     <Sheet open={open} onOpenChange={(o) => !o && onClose()}>
       <SheetContent
         side="bottom"
         showCloseButton={false}
-        className={`gap-0 overflow-y-auto rounded-t-2xl p-5 sm:inset-0! sm:m-auto! sm:w-full sm:rounded-2xl ${widthClassName} ${heightClassName}`}
+        className={`gap-0 overflow-y-auto rounded-t-2xl ${paddingClassName} sm:inset-0! sm:m-auto! sm:w-full sm:rounded-2xl ${widthClassName} ${heightClassName}`}
       >
         <SheetTitle className="sr-only">Panel</SheetTitle>
         {children}

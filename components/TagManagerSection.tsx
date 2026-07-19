@@ -17,8 +17,8 @@ import {
   countTagUsage,
   deleteTag,
   PHOSPHOR_ICON_MAP,
-  tagColor,
   tagIcon,
+  tagMapColor,
   TAG_ICONS,
   updateTag,
   type Tag,
@@ -163,7 +163,7 @@ export function TagManagerSection({
                         ? "border-red-500 ring-2 ring-red-500"
                         : "border-black/10 dark:border-white/10"
                     }`}
-                    style={{ color: tagColor(tag) }}
+                    style={{ color: tagMapColor(tag) }}
                   >
                     <Icon size={14} weight="bold" />
                   </button>
@@ -178,7 +178,7 @@ export function TagManagerSection({
                         ? "border-red-500 ring-2 ring-red-500"
                         : "border-black/10 dark:border-white/10"
                     }`}
-                    style={{ background: tagColor(tag) }}
+                    style={{ background: tagMapColor(tag) }}
                   />
                 )}
                 {editingId === tag.id ? (

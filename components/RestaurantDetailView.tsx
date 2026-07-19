@@ -1,7 +1,17 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { CaretDown, Globe, ImageSquare, MapPin, Phone, Star, Tag } from "@phosphor-icons/react";
+import {
+  CaretDown,
+  Globe,
+  ImageSquare,
+  MapPin,
+  NavigationArrow,
+  PencilSimple,
+  Phone,
+  Star,
+  Tag,
+} from "@phosphor-icons/react";
 import { PHOSPHOR_ICON_MAP, tagColor, tagIcon } from "@/lib/tags";
 import { setFavourite } from "@/lib/restaurants";
 import { fetchRestaurantPhotos } from "@/lib/photos";
@@ -76,10 +86,12 @@ export function RestaurantDetailView({
     let cancelled = false;
     fetchRestaurantPhotos(restaurant.id)
       .then((data) => {
-        if (!cancelled) setPhotos(data);
+        if (!cancelled) {
+          setPhotos(data);
+          setPhotosLoading(false);
+        }
       })
-      .catch(() => {})
-      .finally(() => {
+      .catch(() => {
         if (!cancelled) setPhotosLoading(false);
       });
     return () => {
@@ -157,7 +169,7 @@ export function RestaurantDetailView({
       </div>
 
       {restaurant.tags.length > 0 && (
-        <div className="flex items-center gap-2 text-sm text-black/60 dark:text-white/60">
+        <div className="flex items-center gap-2 text-xs text-black/60 dark:text-white/60">
           <Tag size={14} className="shrink-0 text-black/40 dark:text-white/40" />
           <span className="min-w-0 flex-1">{restaurant.tags.map((t) => t.name).join(", ")}</span>
         </div>
@@ -173,7 +185,12 @@ export function RestaurantDetailView({
           ))
         ) : photos.length > 0 ? (
           photos.map((photo) => (
-            <FadeImage key={photo.id} src={photo.url} className="h-28 w-28 shrink-0 rounded-lg" />
+            <FadeImage
+              key={photo.id}
+              src={photo.url}
+              className="h-28 w-28 shrink-0 rounded-lg"
+              showSkeleton={false}
+            />
           ))
         ) : (
           <div className="flex h-28 w-28 shrink-0 items-center justify-center rounded-lg bg-black/5 dark:bg-white/10">
@@ -275,24 +292,25 @@ export function RestaurantDetailView({
           </div>
         </>
       )}
-      <div className="mt-2 flex gap-2">
+      <div className="mt-2 flex items-center gap-2">
         {directionsUrl && (
           <a
             href={directionsUrl}
             target="_blank"
             rel="noreferrer"
-            className="flex-1 rounded-lg bg-black py-2 text-center text-sm font-medium text-white dark:bg-white dark:text-black"
+            className="flex flex-1 items-center justify-center gap-2 rounded-full bg-red-500 py-2 text-center font-heading text-sm uppercase text-white"
           >
+            <NavigationArrow size={16} weight="bold" />
             Get directions
           </a>
         )}
         <button
+          type="button"
           onClick={onEdit}
-          className={`rounded-lg border border-black/10 px-4 py-2 text-sm dark:border-white/10 ${
-            directionsUrl ? "" : "flex-1"
-          }`}
+          aria-label="Edit"
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-black/10 dark:border-white/10"
         >
-          Edit
+          <PencilSimple size={16} weight="bold" />
         </button>
       </div>
     </div>

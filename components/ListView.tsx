@@ -281,7 +281,7 @@ export function ListView() {
         <p className="text-sm text-black/50 dark:text-white/50">There are no places added.</p>
         <button
           onClick={openAdd}
-          className="rounded-full bg-red-500 px-4 py-2 text-sm font-medium text-white"
+          className="rounded-full bg-red-500 px-4 py-2 font-heading text-sm uppercase text-white"
         >
           Add a place
         </button>
@@ -361,7 +361,7 @@ export function ListView() {
         <div
           className={
             displayMode === "card"
-              ? "mx-auto grid w-full max-w-[1920px] grid-cols-2 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6"
+              ? "mx-auto grid w-full max-w-[1920px] grid-cols-2 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 min-[1440px]:grid-cols-6"
               : "mx-auto flex w-full max-w-[800px] flex-col gap-2"
           }
         >
@@ -379,7 +379,7 @@ export function ListView() {
                     {group.areaName}
                   </h3>
                   {displayMode === "card" ? (
-                    <div className="grid grid-cols-2 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
+                    <div className="grid grid-cols-2 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 min-[1440px]:grid-cols-6">
                       {group.restaurants.map((r) => (
                         <RestaurantCard
                           key={r.id}

@@ -636,7 +636,7 @@ export function SheetView() {
         <p className="text-sm text-black/50 dark:text-white/50">There are no places added.</p>
         <button
           onClick={() => openAddInline("", (saved) => patchRestaurantCache(saved))}
-          className="rounded-full bg-red-500 px-4 py-2 text-sm font-medium text-white"
+          className="rounded-full bg-red-500 px-4 py-2 font-heading text-sm uppercase text-white"
         >
           Add a place
         </button>
@@ -863,7 +863,7 @@ export function SheetView() {
                           patchRestaurantCache(saved);
                         })
                       }
-                      aria-label="Add restaurant"
+                      aria-label="Add place"
                       className="flex h-6 w-6 flex-none items-center justify-center rounded-full bg-red-500 text-white"
                     >
                       <Plus size={14} weight="bold" />

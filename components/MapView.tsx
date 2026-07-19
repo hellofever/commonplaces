@@ -118,13 +118,16 @@ function isGeoTagged(r: Restaurant): r is GeoRestaurant {
 
 function RestaurantMarker({
   restaurant,
+  isSelected,
   onSelect,
 }: {
   restaurant: GeoRestaurant;
+  isSelected: boolean;
   onSelect: (restaurant: Restaurant) => void;
 }) {
   const map = useMap();
   const Icon = PHOSPHOR_ICON_MAP[tagIcon(restaurant.primaryTag)];
+  const color = tagMapColor(restaurant.primaryTag);
   return (
     <AdvancedMarker
       position={{ lat: restaurant.lat, lng: restaurant.lng }}
@@ -133,11 +136,25 @@ function RestaurantMarker({
         onSelect(restaurant);
       }}
     >
-      <div
-        className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-white shadow"
-        style={{ background: tagMapColor(restaurant.primaryTag) }}
-      >
-        <Icon size={16} weight="bold" color="#ffffff" />
+      {/* Fixed-size wrapper keeps the marker's anchor point stable -- the halo and
+          scale transform below are purely visual and must never grow this box, or the
+          pin would appear to shift position when selected. */}
+      <div className="relative flex h-8 w-8 items-center justify-center">
+        {isSelected && (
+          <span
+            aria-hidden
+            className="absolute inset-0 -z-10 -m-2 animate-ping rounded-full opacity-40 [animation-duration:2s]"
+            style={{ background: color }}
+          />
+        )}
+        <div
+          className={`flex h-8 w-8 items-center justify-center rounded-full border-2 border-white shadow transition-transform duration-150 ${
+            isSelected ? "scale-110" : ""
+          }`}
+          style={{ background: color }}
+        >
+          <Icon size={16} weight="bold" color="#ffffff" />
+        </div>
       </div>
     </AdvancedMarker>
   );
@@ -429,6 +446,7 @@ export function MapView({
               <RestaurantMarker
                 key={r.id}
                 restaurant={r}
+                isSelected={r.id === selectedId}
                 onSelect={(restaurant) => setSelectedId(restaurant.id)}
               />
             ))}

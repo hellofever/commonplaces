@@ -1,8 +1,18 @@
 "use client";
 
 import { useState } from "react";
-import { NavigationArrow, ArrowsOut, MapPin, PencilSimple, Star, X } from "@phosphor-icons/react";
+import {
+  NavigationArrow,
+  ArrowsOut,
+  MapPin,
+  PencilSimple,
+  Star,
+  Storefront,
+  Tag,
+  X,
+} from "@phosphor-icons/react";
 import { PHOSPHOR_ICON_MAP, tagColor, tagIcon } from "@/lib/tags";
+import { getOpenStatus } from "@/lib/hours";
 import { setFavourite } from "@/lib/restaurants";
 import { useRestaurantUI } from "./AppShell";
 import type { Restaurant } from "@/lib/types";
@@ -17,6 +27,7 @@ export function RestaurantCardContent({
   showActions?: boolean;
 }) {
   const { openDetail, openEdit, patchRestaurantCache } = useRestaurantUI();
+  const openStatus = getOpenStatus(restaurant.opening_hours);
   const [favourite, setFavouriteState] = useState(restaurant.is_favourite);
   const [toggling, setToggling] = useState(false);
 
@@ -59,7 +70,7 @@ export function RestaurantCardContent({
             className={favourite ? "text-red-500" : "text-black/30 dark:text-white/30"}
           />
         </button>
-        <h3 className="min-w-0 flex-1 text-sm font-medium">{restaurant.name}</h3>
+        <h3 className="min-w-0 flex-1 text-base font-medium">{restaurant.name}</h3>
         {onClose && (
           <button
             type="button"
@@ -86,14 +97,6 @@ export function RestaurantCardContent({
             </span>
           );
         })}
-        {restaurant.tags.map((t) => (
-          <span
-            key={t.id}
-            className="inline-flex items-center gap-1 rounded-full border border-black/15 px-2.5 py-1 text-[11px] font-medium text-black/60 dark:border-white/15 dark:text-white/60"
-          >
-            {t.name}
-          </span>
-        ))}
         {restaurant.areas.map((a) => (
           <span
             key={a.id}
@@ -105,9 +108,24 @@ export function RestaurantCardContent({
         ))}
       </div>
 
-      {restaurant.address && (
-        <p className="text-xs font-medium">{restaurant.address}</p>
+      {restaurant.tags.length > 0 && (
+        <div className="flex items-center gap-2 text-xs text-black/60 dark:text-white/60">
+          <Tag size={14} className="shrink-0 text-black/40 dark:text-white/40" />
+          <span className="min-w-0 flex-1">{restaurant.tags.map((t) => t.name).join(", ")}</span>
+        </div>
       )}
+
+      {restaurant.address && (
+        <div className="flex items-center gap-1.5 text-sm font-medium">
+          <MapPin size={14} weight="fill" className="shrink-0 text-black/40 dark:text-white/40" />
+          <span className="min-w-0 flex-1 truncate">{restaurant.address}</span>
+        </div>
+      )}
+
+      <div className={`flex items-center gap-1.5 text-sm font-medium ${openStatus.textClass}`}>
+        <Storefront size={14} weight="fill" className={`shrink-0 ${openStatus.iconClass}`} />
+        {openStatus.label}
+      </div>
 
       {showActions && (
         <div className="flex gap-1.5">

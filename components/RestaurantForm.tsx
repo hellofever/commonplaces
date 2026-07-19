@@ -13,7 +13,7 @@ export function RestaurantForm({
   initial,
   restaurantId,
   onSubmit,
-  submitLabel = "Save restaurant",
+  submitLabel = "Save place",
   suggestedTagName,
 }: {
   initial: Partial<RestaurantFormValues>;
@@ -239,13 +239,15 @@ export function RestaurantForm({
 
       {error && <p className="text-sm text-red-600">{error}</p>}
 
-      <button
-        type="submit"
-        disabled={saving || photoUpload.uploading}
-        className="mt-1 rounded-lg bg-black py-2.5 text-sm font-medium text-white disabled:opacity-50 dark:bg-white dark:text-black"
-      >
-        {photoUpload.uploading ? "Uploading photos…" : saving ? "Saving…" : submitLabel}
-      </button>
+      <div className="sticky bottom-0 z-10 bg-popover pt-3 pb-[calc(1.25rem+env(safe-area-inset-bottom))]">
+        <button
+          type="submit"
+          disabled={saving || photoUpload.uploading}
+          className="w-full rounded-full bg-red-500 py-2.5 font-heading text-sm uppercase text-white disabled:opacity-50"
+        >
+          {photoUpload.uploading ? "Uploading photos…" : saving ? "Saving…" : submitLabel}
+        </button>
+      </div>
     </form>
   );
 }

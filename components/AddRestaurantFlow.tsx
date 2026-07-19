@@ -128,7 +128,7 @@ export function AddRestaurantFlow({
 
   if (duplicate) {
     return (
-      <div className="flex flex-col gap-3">
+      <div className="flex flex-col gap-3 py-5">
         <ModalHeader
           title={<h2 className="text-lg">Already on your list</h2>}
           onClose={onClose}
@@ -155,10 +155,10 @@ export function AddRestaurantFlow({
       <>
         <ModalHeader
           title={
-            <h2 className="text-lg">{editing ? "Edit restaurant" : "Add restaurant"}</h2>
+            <h2 className="text-lg">{editing ? "Edit place" : "Add place"}</h2>
           }
           onClose={onClose}
-          className="mb-3"
+          className="sticky top-0 z-10 bg-popover pt-5 pb-3"
         />
         <RestaurantForm
           initial={formInitial}
@@ -171,8 +171,8 @@ export function AddRestaurantFlow({
   }
 
   return (
-    <div className="flex flex-col gap-3">
-      <ModalHeader title={<h2 className="text-lg">Add restaurant</h2>} onClose={onClose} />
+    <div className="flex flex-col gap-3 py-5">
+      <ModalHeader title={<h2 className="text-lg">Add place</h2>} onClose={onClose} />
       <form onSubmit={runSearch} className="flex gap-2">
         <input
           autoFocus

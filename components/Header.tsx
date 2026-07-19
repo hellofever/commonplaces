@@ -75,7 +75,7 @@ export function Header({ onAdd }: { onAdd: () => void }) {
           which drifts off-viewport-center whenever the two side groups' widths differ. */}
       <div className="hidden md:grid md:grid-cols-[1fr_auto_1fr] md:items-center md:gap-3">
         <div className="flex items-center gap-4">
-          <Logo className="h-[13px] w-auto" />
+          <Logo className="h-4 w-auto" />
           <DestinationSwitcher />
           <nav className="flex items-center gap-1 text-sm">
             {TABS.map((tab) => {
@@ -106,7 +106,7 @@ export function Header({ onAdd }: { onAdd: () => void }) {
         <div className="flex items-center justify-self-end gap-2">
           <button
             onClick={onAdd}
-            className="flex items-center gap-1.5 rounded-full bg-red-500 px-4 py-2 text-sm font-medium text-white"
+            className="flex items-center gap-1.5 rounded-full bg-red-500 px-4 py-2 font-heading text-sm uppercase text-white"
           >
             <Plus weight="bold" size={16} />
             Add Place

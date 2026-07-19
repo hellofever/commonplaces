@@ -338,7 +338,11 @@ function AuthenticatedShell({ children }: { children: React.ReactNode }) {
       <Header onAdd={() => setSheet({ kind: "add" })} />
       <main className="flex min-h-0 flex-1 flex-col">{children}</main>
 
-      <BottomSheet open={sheet !== null} onClose={() => setSheet(null)}>
+      <BottomSheet
+        open={sheet !== null}
+        onClose={() => setSheet(null)}
+        paddingClassName={sheet?.kind === "detail" ? "p-5" : "px-5"}
+      >
         {sheet?.kind === "detail" && (
           <RestaurantDetailView
             key={sheet.restaurant.id}
