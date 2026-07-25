@@ -1,18 +1,20 @@
 "use client";
 
 import { useState } from "react";
-import { CaretLeft, Gear, MapPin, Tag } from "@phosphor-icons/react";
+import { CaretLeft, Gear, MapPin, MapTrifold, Tag } from "@phosphor-icons/react";
 import { ThemeToggle } from "./ThemeToggle";
 import { DataSyncSettings } from "./DataSyncSettings";
 import { TagManager } from "./TagManager";
 import { DestinationSettings } from "./DestinationSettings";
+import { MapSettings } from "./MapSettings";
 
-type Category = "general" | "destination" | "tags";
+type Category = "general" | "destination" | "tags" | "map";
 
 const CATEGORIES: { id: Category; label: string; icon: typeof Gear }[] = [
   { id: "general", label: "General", icon: Gear },
   { id: "destination", label: "Destination", icon: MapPin },
   { id: "tags", label: "Tag Manager", icon: Tag },
+  { id: "map", label: "Map", icon: MapTrifold },
 ];
 
 // 2-column settings shell: a left category rail + right content pane on desktop.
@@ -75,6 +77,7 @@ export function Settings() {
         )}
         {category === "destination" && <DestinationSettings />}
         {category === "tags" && <TagManager />}
+        {category === "map" && <MapSettings />}
       </div>
     </div>
   );

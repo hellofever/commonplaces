@@ -3,9 +3,9 @@
 import { useState } from "react";
 import {
   NavigationArrow,
-  ArrowsOut,
+  DotsThree,
+  GpsFix,
   MapPin,
-  PencilSimple,
   Star,
   Storefront,
   Tag,
@@ -20,13 +20,17 @@ import type { Restaurant } from "@/lib/types";
 export function RestaurantCardContent({
   restaurant,
   onClose,
+  onLocate,
+  locateActive = false,
   showActions = true,
 }: {
   restaurant: Restaurant;
   onClose?: () => void;
+  onLocate?: () => void;
+  locateActive?: boolean;
   showActions?: boolean;
 }) {
-  const { openDetail, openEdit, patchRestaurantCache } = useRestaurantUI();
+  const { openDetail, patchRestaurantCache } = useRestaurantUI();
   const openStatus = getOpenStatus(restaurant.opening_hours);
   const [favourite, setFavouriteState] = useState(restaurant.is_favourite);
   const [toggling, setToggling] = useState(false);
@@ -53,32 +57,16 @@ export function RestaurantCardContent({
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex items-start gap-2">
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            handleToggleFavourite();
-          }}
-          disabled={toggling}
-          aria-label={favourite ? "Remove from favourites" : "Add to favourites"}
-          className="mt-0.5 shrink-0 disabled:opacity-50"
-        >
-          <Star
-            size={16}
-            weight={favourite ? "fill" : "regular"}
-            className={favourite ? "text-red-500" : "text-black/30 dark:text-white/30"}
-          />
-        </button>
-        <h3 className="min-w-0 flex-1 text-base font-medium">{restaurant.name}</h3>
+      <div className="flex items-center gap-2">
+        <h3 className="min-w-0 flex-1 text-xl font-semibold">{restaurant.name}</h3>
         {onClose && (
           <button
             type="button"
             onClick={onClose}
             aria-label="Close"
-            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-black/10 text-black/50 dark:border-white/10 dark:text-white/50"
+            className="flex h-12 w-12 shrink-0 items-center justify-center self-start text-black/50 dark:text-white/50"
           >
-            <X size={12} weight="bold" />
+            <X size={24} weight="bold" />
           </button>
         )}
       </div>
@@ -129,6 +117,28 @@ export function RestaurantCardContent({
 
       {showActions && (
         <div className="flex gap-1.5">
+          <button
+            onClick={() => handleToggleFavourite()}
+            disabled={toggling}
+            aria-label={favourite ? "Remove from favourites" : "Add to favourites"}
+            className={`flex flex-1 flex-col items-center justify-center gap-1 rounded-lg border border-black/10 py-1.5 disabled:opacity-50 dark:border-white/10 ${
+              favourite ? "text-red-500 dark:text-red-500" : ""
+            }`}
+          >
+            <Star size={16} weight={favourite ? "fill" : "bold"} />
+            <span className="text-[11px] font-medium">Favourite</span>
+          </button>
+          {onLocate && (
+            <button
+              onClick={onLocate}
+              className={`flex flex-1 flex-col items-center justify-center gap-1 rounded-lg border border-black/10 py-1.5 dark:border-white/10 ${
+                locateActive ? "text-red-500 dark:text-red-500" : ""
+              }`}
+            >
+              <GpsFix size={16} weight={locateActive ? "fill" : "bold"} />
+              <span className="text-[11px] font-medium">Locate</span>
+            </button>
+          )}
           {directionsUrl && (
             <a
               href={directionsUrl}
@@ -144,15 +154,8 @@ export function RestaurantCardContent({
             onClick={() => openDetail(restaurant)}
             className="flex flex-1 flex-col items-center justify-center gap-1 rounded-lg border border-black/10 py-1.5 dark:border-white/10"
           >
-            <ArrowsOut size={16} weight="bold" />
-            <span className="text-[11px] font-medium">View more</span>
-          </button>
-          <button
-            onClick={() => openEdit(restaurant)}
-            className="flex flex-1 flex-col items-center justify-center gap-1 rounded-lg border border-black/10 py-1.5 dark:border-white/10"
-          >
-            <PencilSimple size={16} weight="bold" />
-            <span className="text-[11px] font-medium">Edit place</span>
+            <DotsThree size={16} weight="bold" />
+            <span className="text-[11px] font-medium">More</span>
           </button>
         </div>
       )}

@@ -1,9 +1,11 @@
 "use client";
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { APIProvider, Map, AdvancedMarker, useMap } from "@vis.gl/react-google-maps";
+import { APIProvider, Map, AdvancedMarker, useMap, useAdvancedMarkerRef } from "@vis.gl/react-google-maps";
+import { MarkerClusterer, type Cluster, type Renderer } from "@googlemaps/markerclusterer";
 import { ArrowsHorizontal, Compass, GpsFix } from "@phosphor-icons/react";
 import { PHOSPHOR_ICON_MAP, tagIcon, tagMapColor } from "@/lib/tags";
+import { useClusteringEnabled } from "@/lib/preferences";
 import { useRestaurantUI } from "./AppShell";
 import { MapControlsDrawer } from "./MapControlsDrawer";
 import { MapBottomCard } from "./MapBottomCard";
@@ -12,8 +14,11 @@ import type { Restaurant } from "@/lib/types";
 import type { Destination } from "@/lib/destinations";
 
 // Shared zoom for both "pan to a selected pin" and "locate me" -- street scale
-// (~4m/px, so a phone-width viewport spans roughly 1.5km).
-const FOCUS_ZOOM = 16;
+// (~4m/px, so a phone-width viewport spans roughly 1.5km). Exported so
+// MapBottomCard's "Locate on map" button (re-centering on the already-selected
+// restaurant, e.g. after the user pans away) can re-run the same camera move as
+// a marker click, rather than a second hand-rolled zoom constant.
+export const FOCUS_ZOOM = 16;
 // Fixed recenter zoom on a destination switch -- a bit wider than a single-restaurant
 // focus so a whole city reads reasonably, though a country-sized destination (e.g.
 // "Mexico") will still look too zoomed-in at this level. Getting that right needs
@@ -160,16 +165,28 @@ const RestaurantMarker = memo(function RestaurantMarker({
   restaurant,
   isSelected,
   onSelect,
+  registerMarker,
 }: {
   restaurant: GeoRestaurant;
   isSelected: boolean;
   onSelect: (restaurant: Restaurant) => void;
+  // Stable (see ClusteredMarkers' useCallback with empty deps) so passing it here
+  // doesn't defeat this component's own React.memo.
+  registerMarker: (id: string, marker: google.maps.marker.AdvancedMarkerElement | null) => void;
 }) {
   const map = useMap();
+  const [markerRef, marker] = useAdvancedMarkerRef();
+
+  useEffect(() => {
+    registerMarker(restaurant.id, marker);
+    return () => registerMarker(restaurant.id, null);
+  }, [restaurant.id, marker, registerMarker]);
+
   const Icon = PHOSPHOR_ICON_MAP[tagIcon(restaurant.primaryTag)];
   const color = tagMapColor(restaurant.primaryTag);
   return (
     <AdvancedMarker
+      ref={markerRef}
       position={{ lat: restaurant.lat, lng: restaurant.lng }}
       onClick={() => {
         if (map) animateCameraTo(map, { lat: restaurant.lat, lng: restaurant.lng, zoom: FOCUS_ZOOM });
@@ -200,6 +217,119 @@ const RestaurantMarker = memo(function RestaurantMarker({
   );
 });
 
+// Groups RestaurantMarkers with @googlemaps/markerclusterer so dense areas collapse
+// into a single cluster pin instead of every AdvancedMarker rendering individually --
+// with dozens/hundreds of pins, each one recomputing its screen position on every
+// camera-animation frame (see animateCameraTo) is real layout cost on mobile Safari,
+// and overlapping markers also fight each other for taps. Pure client-side grouping
+// math over marker objects already in memory -- no extra Maps JS or Places calls, see
+// the cost discussion this was checked against.
+//
+// AdvancedMarker still renders as a normal React child of <Map> (so position/content
+// stay React-managed) -- the clusterer is only ever given the underlying
+// AdvancedMarkerElement instances via registerMarker, and independently toggles their
+// map visibility to show/hide the cluster pin. The two don't fight over `.map` because
+// vis.gl's <AdvancedMarker> only ever attaches once on mount; only the clusterer
+// changes visibility after that.
+
+// Flat neutral grey instead of the library's default blue/red-by-size scheme -- a
+// cluster pin means "N places near here," not a category, so it shouldn't borrow a
+// color that already means something specific on an individual pin (see tagMapColor).
+const CLUSTER_PIN_COLOR = "#52525b";
+
+const clusterRenderer: Renderer = {
+  render(cluster) {
+    const content = document.createElement("div");
+    content.className =
+      "flex h-9 w-9 items-center justify-center rounded-full border-2 border-white text-xs font-bold text-white shadow";
+    content.style.background = CLUSTER_PIN_COLOR;
+    content.textContent = String(cluster.count);
+    return new google.maps.marker.AdvancedMarkerElement({
+      position: cluster.position,
+      content,
+      zIndex: 1000 + cluster.count,
+    });
+  },
+};
+
+// The library's default onClusterClick just calls map.fitBounds(cluster.bounds) with no
+// padding, which can leave edge markers flush against the viewport edge right after
+// zooming in. Pad it out (same 32px asked for) and animate through this file's own
+// animateFitBounds instead of fitBounds' instant jump, so a cluster tap feels like every
+// other camera move here rather than a sudden cut.
+function handleClusterClick(_event: google.maps.MapMouseEvent, cluster: Cluster, map: google.maps.Map) {
+  if (!cluster.bounds) return;
+  animateFitBounds(map, cluster.bounds, { padding: 32 });
+}
+function ClusteredMarkers({
+  restaurants,
+  selectedId,
+  onSelect,
+  enabled,
+}: {
+  restaurants: GeoRestaurant[];
+  selectedId: string | null;
+  onSelect: (restaurant: Restaurant) => void;
+  // Settings > Map > "Marker clustering" (see lib/preferences.ts), device-local. MapView
+  // remounts this whole component (via a `key` swap) whenever this flips, so there's
+  // never a stale clusterer holding markers hidden after switching to "off" -- simpler
+  // and safer than trying to un-hide already-clustered markers by hand.
+  enabled: boolean;
+}) {
+  const map = useMap();
+  const clustererRef = useRef<MarkerClusterer | null>(null);
+  // globalThis.Map, not the <Map> component this file imports from
+  // @vis.gl/react-google-maps under the same name.
+  const markersRef = useRef<globalThis.Map<string, google.maps.marker.AdvancedMarkerElement>>(
+    new globalThis.Map()
+  );
+
+  useEffect(() => {
+    if (!map || !enabled) return;
+    const mc = new MarkerClusterer({ map, renderer: clusterRenderer, onClusterClick: handleClusterClick });
+    clustererRef.current = mc;
+    // Seed it with whatever's already registered -- markers can attach their ref before
+    // this effect runs (child effects commit before the parent's), so this isn't always
+    // starting from empty.
+    mc.addMarkers([...markersRef.current.values()]);
+    return () => {
+      mc.setMap(null);
+      clustererRef.current = null;
+    };
+  }, [map, enabled]);
+
+  // Empty deps (refs only) -- stays referentially stable across renders so passing it
+  // to every RestaurantMarker never defeats that component's own React.memo. Syncs the
+  // clusterer directly here (not via a separate effect keyed on the restaurant list)
+  // because each AdvancedMarkerElement attaches its ref one render after its own mount
+  // (useAdvancedMarkerRef flows the instance back through state) -- a parent effect keyed
+  // on `restaurants` would fire once per list change, missing that later per-marker
+  // attach entirely, which is exactly why the clusterer silently received zero markers
+  // the first time this was wired up.
+  const registerMarker = useCallback((id: string, marker: google.maps.marker.AdvancedMarkerElement | null) => {
+    if (marker) markersRef.current.set(id, marker);
+    else markersRef.current.delete(id);
+    if (clustererRef.current) {
+      clustererRef.current.clearMarkers();
+      clustererRef.current.addMarkers([...markersRef.current.values()]);
+    }
+  }, []);
+
+  return (
+    <>
+      {restaurants.map((r) => (
+        <RestaurantMarker
+          key={r.id}
+          restaurant={r}
+          isSelected={r.id === selectedId}
+          onSelect={onSelect}
+          registerMarker={registerMarker}
+        />
+      ))}
+    </>
+  );
+}
+
 // Stays anchored over the map itself (not the drawer) so its position doesn't drift
 // when the drawer occupies the space beside it on desktop.
 function MapExpandButton({
@@ -226,17 +356,58 @@ function MapExpandButton({
   );
 }
 
-const LOCATE_ANIMATION_MS = 800;
-
 function easeOutCubic(t: number) {
   return 1 - Math.pow(1 - t, 3);
+}
+
+// A flat animation duration makes a short hop and a cross-town/cross-zoom jump take
+// the same time -- the big ones then have to cover far more visible motion in that
+// same window, which is what reads as "too fast." Duration instead scales with how
+// much the camera actually has to move: pan distance in on-screen pixels (projected at
+// the zoom level roughly midway between start/target, since that's what the animation
+// is actually passing through) plus how many zoom levels it crosses, whichever is
+// larger. Clamped to a floor/ceiling so tiny moves don't snap instantly and huge ones
+// don't crawl -- the goal is a consistent "mid speed" feel, not literally constant
+// pixel-speed.
+const MIN_ANIMATION_MS = 500;
+const MAX_ANIMATION_MS = 3000;
+const PIXELS_PER_MS = 0.65;
+const MS_PER_ZOOM_LEVEL = 260;
+// Fallback for the (practically never hit) case where the map's projection isn't
+// ready yet -- matches this file's old flat duration rather than guessing.
+const FALLBACK_ANIMATION_MS = 1600;
+
+function animationDurationFor(
+  map: google.maps.Map,
+  start: { lat: number; lng: number; zoom: number },
+  target: { lat: number; lng: number; zoom: number }
+) {
+  const zoomMs = Math.abs(target.zoom - start.zoom) * MS_PER_ZOOM_LEVEL;
+  const projection = map.getProjection();
+  if (!projection) return Math.min(MAX_ANIMATION_MS, Math.max(MIN_ANIMATION_MS, zoomMs || FALLBACK_ANIMATION_MS));
+
+  const startPoint = projection.fromLatLngToPoint(new google.maps.LatLng(start.lat, start.lng));
+  const targetPoint = projection.fromLatLngToPoint(new google.maps.LatLng(target.lat, target.lng));
+  if (!startPoint || !targetPoint) {
+    return Math.min(MAX_ANIMATION_MS, Math.max(MIN_ANIMATION_MS, zoomMs || FALLBACK_ANIMATION_MS));
+  }
+
+  // fromLatLngToPoint returns "world coordinates" (the whole world spans 256x256
+  // units, independent of zoom) -- scale by 2^zoom to get actual on-screen pixels at
+  // the zoom the animation is passing through.
+  const scale = Math.pow(2, (start.zoom + target.zoom) / 2);
+  const pixelDistance = Math.hypot((targetPoint.x - startPoint.x) * scale, (targetPoint.y - startPoint.y) * scale);
+  const panMs = pixelDistance / PIXELS_PER_MS;
+
+  return Math.min(MAX_ANIMATION_MS, Math.max(MIN_ANIMATION_MS, panMs, zoomMs));
 }
 
 // panTo() alone only animates the pan, not the zoom -- there's no built-in "animate to
 // zoom" method in the Maps JS API, so this hand-rolls the standard requestAnimationFrame
 // + moveCamera() easing pattern from Google's own "Move Camera Easing" example instead
-// of pulling in an animation library for one tween.
-function animateCameraTo(map: google.maps.Map, target: { lat: number; lng: number; zoom: number }) {
+// of pulling in an animation library for one tween. Exported for MapBottomCard's
+// "Locate on map" button -- see FOCUS_ZOOM above.
+export function animateCameraTo(map: google.maps.Map, target: { lat: number; lng: number; zoom: number }) {
   const startCenter = map.getCenter();
   const startZoom = map.getZoom();
   if (!startCenter || startZoom === undefined) {
@@ -244,10 +415,11 @@ function animateCameraTo(map: google.maps.Map, target: { lat: number; lng: numbe
     return;
   }
   const start = { lat: startCenter.lat(), lng: startCenter.lng(), zoom: startZoom };
+  const duration = animationDurationFor(map, start, target);
   const startTime = performance.now();
 
   function step(now: number) {
-    const t = easeOutCubic(Math.min((now - startTime) / LOCATE_ANIMATION_MS, 1));
+    const t = easeOutCubic(Math.min((now - startTime) / duration, 1));
     map.moveCamera({
       center: {
         lat: start.lat + (target.lat - start.lat) * t,
@@ -325,11 +497,41 @@ function animateFitBounds(
   else animateCameraTo(map, target);
 }
 
+// Turns locate-me's active state off the moment the user manually pans the map away
+// from the just-located position -- the red icon/pulsing dot are a "you're centered on
+// yourself" indicator, so they stop making sense once the user drags off it. Only
+// listens for `dragstart` (a user gesture), not `bounds_changed`/`zoom_changed` -- this
+// file's own animateCameraTo calls drive the camera via moveCamera, not drag, so they
+// never trigger this, and pinch-zooming while still centered on the point doesn't
+// spuriously clear it either.
+function DeactivateLocateOnDrag({ active, onInteract }: { active: boolean; onInteract: () => void }) {
+  const map = useMap();
+  useEffect(() => {
+    if (!map || !active) return;
+    const listener = map.addListener("dragstart", onInteract);
+    return () => listener.remove();
+  }, [map, active, onInteract]);
+  return null;
+}
+
 // Centers the map on the browser's geolocation result. Kept as its own component (not
 // inline in MapView) since it needs useMap() -- same reason MapExpandButton is split
 // out above it. The located coordinates are reported up to MapView (rather than kept
-// local) so the same point can also render as a marker inside <Map>.
-function LocateMeButton({ onLocated }: { onLocated: (position: { lat: number; lng: number }) => void }) {
+// local) so the same point can also render as a marker inside <Map>. First press pans
+// at whatever zoom the map is already at (take me to my position); a second press
+// while still centered there (`active` true, i.e. the user hasn't panned away since)
+// zooms in to FOCUS_ZOOM instead, matching the two-stage behavior of Google Maps' own
+// locate button. `active` (lifted to MapView, not local state) also drives this
+// button's red icon and the "you are here" marker's pulse, so the two stay in sync --
+// see DeactivateLocateOnDrag above (panning away) and MapView's isActive effect
+// (leaving the Map tab) for what resets them.
+function LocateMeButton({
+  active,
+  onLocated,
+}: {
+  active: boolean;
+  onLocated: (position: { lat: number; lng: number }) => void;
+}) {
   const map = useMap();
   const [locating, setLocating] = useState(false);
 
@@ -339,7 +541,7 @@ function LocateMeButton({ onLocated }: { onLocated: (position: { lat: number; ln
     navigator.geolocation.getCurrentPosition(
       (position) => {
         const point = { lat: position.coords.latitude, lng: position.coords.longitude };
-        if (map) animateCameraTo(map, { ...point, zoom: FOCUS_ZOOM });
+        if (map) animateCameraTo(map, { ...point, zoom: active ? FOCUS_ZOOM : map.getZoom() ?? FOCUS_ZOOM });
         onLocated(point);
         setLocating(false);
       },
@@ -353,9 +555,13 @@ function LocateMeButton({ onLocated }: { onLocated: (position: { lat: number; ln
       onClick={handleClick}
       disabled={locating}
       aria-label="Center on my location"
-      className="flex h-12 w-12 items-center justify-center rounded-full bg-white/90 text-black/70 shadow backdrop-blur disabled:opacity-60 dark:bg-black/80 dark:text-white/70"
+      className={`flex h-12 w-12 items-center justify-center rounded-full shadow backdrop-blur disabled:opacity-60 ${
+        active
+          ? "bg-white/90 text-red-500 dark:bg-black/80 dark:text-red-500"
+          : "bg-white/90 text-black/70 dark:bg-black/80 dark:text-white/70"
+      }`}
     >
-      <GpsFix size={22} weight="bold" className={locating ? "animate-pulse" : undefined} />
+      <GpsFix size={22} weight={active ? "fill" : "bold"} className={locating ? "animate-pulse" : undefined} />
     </button>
   );
 }
@@ -397,11 +603,21 @@ function ResetViewButton({
   );
 }
 
-// The "you are here" dot dropped at the last located position.
-function UserLocationMarker({ position }: { position: { lat: number; lng: number } }) {
+// The "you are here" dot dropped at the last located position. Keeps rendering after
+// locate-me goes inactive (`active` false) -- it's the pulse halo that turns off then,
+// not the dot itself, matching RestaurantMarker's isSelected halo pattern above.
+function UserLocationMarker({ position, active }: { position: { lat: number; lng: number }; active: boolean }) {
   return (
     <AdvancedMarker position={position}>
-      <div className="h-4 w-4 rounded-full border-2 border-white bg-red-500 shadow" />
+      <div className="relative flex h-4 w-4 items-center justify-center">
+        {active && (
+          <span
+            aria-hidden
+            className="absolute inset-0 -z-10 -m-2 animate-ping rounded-full bg-red-500 opacity-40 [animation-duration:2s]"
+          />
+        )}
+        <div className="h-4 w-4 rounded-full border-2 border-white bg-red-500 shadow" />
+      </div>
     </AdvancedMarker>
   );
 }
@@ -420,10 +636,24 @@ export function MapView({
   areaIds?: string[];
 }) {
   const { restaurants, restaurantsError, syncRestaurants, activeDestination } = useRestaurantUI();
+  const [clusteringEnabled] = useClusteringEnabled();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const centerBeforeResize = useRef<google.maps.LatLng | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [locateActive, setLocateActive] = useState(false);
+  const handleLocated = useCallback((position: { lat: number; lng: number }) => {
+    setUserLocation(position);
+    setLocateActive(true);
+  }, []);
+  const handleLocateInteract = useCallback(() => setLocateActive(false), []);
+
+  // Navigating away from the Map tab turns the active state off -- the "you are here"
+  // dot stays put (see UserLocationMarker), it just stops pulsing and the button icon
+  // stops being red until locate-me is pressed again.
+  useEffect(() => {
+    if (!isActive) setLocateActive(false);
+  }, [isActive]);
 
   const focusedRestaurant = focusPlaceId
     ? (restaurants.find((r) => r.id === focusPlaceId) ?? null)
@@ -518,19 +748,21 @@ export function MapView({
             onClick={() => setSelectedId(null)}
           >
             <RestoreCameraOnShow active={isActive} />
+            <DeactivateLocateOnDrag active={locateActive} onInteract={handleLocateInteract} />
             <FitToFilter active={filtersActive} restaurants={geoTagged} />
             <FitToAllOnLoad restaurants={geoTagged} skip={filtersActive || Boolean(focusPlaceId)} />
             {activeDestination && <RecenterOnDestinationChange destination={activeDestination} />}
             <FocusOnPlace restaurant={focusedRestaurant} />
-            {geoTagged.map((r) => (
-              <RestaurantMarker
-                key={r.id}
-                restaurant={r}
-                isSelected={r.id === selectedId}
-                onSelect={handleSelectMarker}
-              />
-            ))}
-            {userLocation && <UserLocationMarker position={userLocation} />}
+            <ClusteredMarkers
+              // Forces a clean remount on toggle (see ClusteredMarkers' `enabled` prop
+              // comment) instead of trying to un-hide already-clustered markers by hand.
+              key={clusteringEnabled ? "clustered" : "unclustered"}
+              restaurants={geoTagged}
+              selectedId={selectedId}
+              onSelect={handleSelectMarker}
+              enabled={clusteringEnabled}
+            />
+            {userLocation && <UserLocationMarker position={userLocation} active={locateActive} />}
           </Map>
           <MapExpandButton
             open={drawerOpen}
@@ -541,7 +773,7 @@ export function MapView({
           {/* Desktop: independent corner buttons + centered card, unchanged. */}
           <div className="absolute bottom-4 right-4 z-20 hidden flex-col gap-3 md:flex">
             <ResetViewButton restaurants={geoTagged} destination={activeDestination} />
-            <LocateMeButton onLocated={setUserLocation} />
+            <LocateMeButton active={locateActive} onLocated={handleLocated} />
           </div>
           <div className="hidden md:block">
             <MapBottomCard restaurant={selectedRestaurant} onClose={() => setSelectedId(null)} />
@@ -554,7 +786,7 @@ export function MapView({
               className={`flex flex-col items-end gap-3 pr-4 ${selectedRestaurant ? "" : "pb-4"}`}
             >
               <ResetViewButton restaurants={geoTagged} destination={activeDestination} />
-              <LocateMeButton onLocated={setUserLocation} />
+              <LocateMeButton active={locateActive} onLocated={handleLocated} />
             </div>
             <MapBottomCard
               restaurant={selectedRestaurant}

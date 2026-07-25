@@ -11,12 +11,12 @@ import {
   Phone,
   Star,
   Tag,
+  X,
 } from "@phosphor-icons/react";
 import { PHOSPHOR_ICON_MAP, tagColor, tagIcon } from "@/lib/tags";
 import { setFavourite } from "@/lib/restaurants";
 import { fetchRestaurantPhotos } from "@/lib/photos";
 import { useRestaurantUI } from "./AppShell";
-import { ModalHeader } from "./BottomSheet";
 import { FadeImage } from "./FadeImage";
 import type { OpeningPeriod, Restaurant } from "@/lib/types";
 
@@ -78,7 +78,7 @@ export function RestaurantDetailView({
   const { patchRestaurantCache } = useRestaurantUI();
   const [favourite, setFavouriteState] = useState(restaurant.is_favourite);
   const [toggling, setToggling] = useState(false);
-  const [hoursOpen, setHoursOpen] = useState(false);
+  const [hoursOpen, setHoursOpen] = useState(true);
   const [photos, setPhotos] = useState<{ id: string; url: string }[]>([]);
   const [photosLoading, setPhotosLoading] = useState(true);
 
@@ -116,27 +116,28 @@ export function RestaurantDetailView({
 
   return (
     <div className="flex flex-col gap-3">
-      <ModalHeader
-        title={
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={handleToggleFavourite}
-              disabled={toggling}
-              aria-label={favourite ? "Remove from favourites" : "Add to favourites"}
-              className="shrink-0 disabled:opacity-50"
-            >
-              <Star
-                size={18}
-                weight={favourite ? "fill" : "regular"}
-                className={favourite ? "text-red-500" : "text-black/30 dark:text-white/30"}
-              />
-            </button>
-            <h2 className="min-w-0 truncate text-lg">{restaurant.name}</h2>
-          </div>
-        }
-        onClose={onClose}
-      />
+      <div className="flex items-center gap-2">
+        <h2 className="min-w-0 flex-1 text-xl font-semibold">{restaurant.name}</h2>
+        <button
+          type="button"
+          onClick={handleToggleFavourite}
+          disabled={toggling}
+          aria-label={favourite ? "Remove from favourites" : "Add to favourites"}
+          className={`flex h-12 w-12 shrink-0 items-center justify-center self-start disabled:opacity-50 ${
+            favourite ? "text-red-500" : "text-black/50 dark:text-white/50"
+          }`}
+        >
+          <Star size={24} weight={favourite ? "fill" : "bold"} />
+        </button>
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close"
+          className="flex h-12 w-12 shrink-0 items-center justify-center self-start text-black/50 dark:text-white/50"
+        >
+          <X size={24} weight="bold" />
+        </button>
+      </div>
 
       <div className="flex flex-wrap items-center gap-1.5">
         {restaurant.types.map((t) => {
