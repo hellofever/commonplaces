@@ -58,10 +58,14 @@ function restaurantMeta(r: Restaurant): React.ReactNode {
 
 function RestaurantRow({
   restaurant: r,
+  photoUrl,
+  onPhotoError,
   onClick,
   onContextMenu,
 }: {
   restaurant: Restaurant;
+  photoUrl: string | undefined;
+  onPhotoError: () => void;
   onClick: () => void;
   onContextMenu: (e: React.MouseEvent) => void;
 }) {
@@ -70,23 +74,32 @@ function RestaurantRow({
     <button
       onClick={onClick}
       onContextMenu={onContextMenu}
-      className="flex items-center gap-3 rounded-lg border border-black/10 px-3 py-2.5 text-left dark:border-white/10"
+      className="flex items-start gap-4 text-left"
     >
-      <span
-        className="flex h-7 w-7 flex-none items-center justify-center rounded-full"
-        style={{ background: tagMapColor(r.primaryTag) }}
-      >
-        <Icon size={14} weight="bold" color="#ffffff" />
+      <span className="h-[120px] w-[120px] flex-none overflow-hidden bg-black/5 dark:bg-white/10">
+        {photoUrl ? (
+          <FadeImage src={photoUrl} className="h-full w-full" onError={onPhotoError} />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center">
+            <ImageSquare size={32} weight="light" className="text-black/20 dark:text-white/20" />
+          </div>
+        )}
       </span>
-      <span className="min-w-0 flex-1">
-        <span className="font-heading block text-sm uppercase">
+      <span className="flex min-w-0 flex-1 flex-col gap-2">
+        <span className="font-heading block text-base uppercase">
           {r.is_favourite && (
-            <Star size={14} weight="fill" className="mr-1 inline-block align-[-2px] text-red-500" />
+            <Star size={16} weight="fill" className="mr-1 inline-block align-[-3px] text-red-500" />
           )}
           {r.name}
         </span>
-        <span className="block truncate text-xs text-black/50 dark:text-white/50">
-          {restaurantMeta(r)}
+        <span className="flex items-center gap-1 text-xs text-black/50 dark:text-white/50">
+          <span
+            className="flex h-4 w-4 flex-none items-center justify-center rounded-full"
+            style={{ background: tagMapColor(r.primaryTag) }}
+          >
+            <Icon size={9} weight="bold" color="#ffffff" />
+          </span>
+          <span className="truncate">{restaurantMeta(r)}</span>
         </span>
       </span>
       <CaretRight size={18} className="flex-none text-black/40" />
@@ -111,7 +124,7 @@ function RestaurantCard({
     <button
       onClick={onClick}
       onContextMenu={onContextMenu}
-      className="flex h-full flex-col overflow-hidden rounded-lg border border-black/10 text-left dark:border-white/10"
+      className="flex h-full flex-col overflow-hidden border border-black/10 text-left dark:border-white/10"
     >
       <div className="aspect-[4/3] w-full flex-none overflow-hidden bg-black/5 dark:bg-white/10">
         {photoUrl ? (
@@ -175,7 +188,7 @@ export function ListView() {
 
   const restaurantIdsKey = restaurants.map((r) => r.id).join(",");
   useEffect(() => {
-    if (displayMode !== "card" || restaurants.length === 0) return;
+    if (restaurants.length === 0) return;
     const seq = ++photoFetchSeq.current;
     fetchFirstPhotoUrls(restaurants.map((r) => r.id))
       .then((map) => {
@@ -183,13 +196,13 @@ export function ListView() {
       })
       .catch((err) => console.error(err));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [displayMode, restaurantIdsKey]);
+  }, [restaurantIdsKey]);
 
   // Runs on every add/edit/favourite-toggle (see patchRestaurantCache), not just when
   // the id set changes -- so a newly-added restaurant's photo (or a photo added to an
   // existing one) shows up immediately instead of only after a refresh.
   useEffect(() => {
-    if (displayMode !== "card" || !lastPatchedRestaurant) return;
+    if (!lastPatchedRestaurant) return;
     const id = lastPatchedRestaurant.id;
     photoFetchSeq.current++;
     fetchFirstPhotoUrls([id])
@@ -203,7 +216,7 @@ export function ListView() {
         });
       })
       .catch((err) => console.error(err));
-  }, [displayMode, lastPatchedRestaurant]);
+  }, [lastPatchedRestaurant]);
 
   // Passed to FadeImage as onError: a cached signed URL that fails to load is refreshed
   // once (see FadeImage's own retry guard) rather than left broken until the next
@@ -310,7 +323,7 @@ export function ListView() {
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
-      <div className="mx-4 mt-4 mb-2 rounded-lg bg-black/5 px-3 py-2 dark:bg-white/10">
+      <div className="mb-6 bg-black/5 px-3 py-2 dark:bg-white/10">
         <ListFilters
           value={filters}
           onChange={updateFilters}
@@ -381,16 +394,14 @@ export function ListView() {
           className={
             displayMode === "card"
               ? "mx-auto grid w-full max-w-[1920px] grid-cols-2 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 min-[1440px]:grid-cols-6"
-              : "mx-auto flex w-full max-w-[800px] flex-col gap-2"
+              : "mx-auto flex w-full max-w-[800px] flex-col gap-8"
           }
         >
           {groupedByArea
             ? groupedByArea.map((group, i) => (
                 <div
                   key={group.areaName}
-                  className={
-                    displayMode === "card" ? "col-span-full flex flex-col gap-4" : "flex flex-col gap-2"
-                  }
+                  className={displayMode === "card" ? "col-span-full flex flex-col gap-4" : "flex flex-col gap-8"}
                 >
                   <h3
                     className={`px-1 text-xs uppercase tracking-wide text-black/50 dark:text-white/50 ${i === 0 ? "" : "pt-3"}`}
@@ -415,6 +426,8 @@ export function ListView() {
                       <RestaurantRow
                         key={r.id}
                         restaurant={r}
+                        photoUrl={photoUrls.get(r.id)}
+                        onPhotoError={() => handlePhotoError(r.id)}
                         onClick={() => openDetail(r)}
                         onContextMenu={(e) => handleRowContextMenu(e, r)}
                       />
@@ -436,6 +449,8 @@ export function ListView() {
                   <RestaurantRow
                     key={r.id}
                     restaurant={r}
+                    photoUrl={photoUrls.get(r.id)}
+                    onPhotoError={() => handlePhotoError(r.id)}
                     onClick={() => openDetail(r)}
                     onContextMenu={(e) => handleRowContextMenu(e, r)}
                   />

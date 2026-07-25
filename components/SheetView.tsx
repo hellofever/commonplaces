@@ -78,11 +78,13 @@ const COLUMN_LABELS: Record<SheetColumn, string> = {
   updated: "Last edited",
 };
 
-const CHECKBOX_COLUMN_WIDTH = 48;
+// Checkbox and Fav are always this many px square (row height), never resized and
+// never subject to auto-fit's percentage scaling -- see colWidth's `fixed` param.
+const CHECKBOX_COLUMN_WIDTH = 36;
 const MIN_COLUMN_WIDTH = 60;
 const NON_RESIZABLE_COLUMNS = new Set<SheetColumn>(["fav"]);
 const DEFAULT_COLUMN_WIDTHS: Record<SheetColumn, number> = {
-  fav: 48,
+  fav: 36,
   name: 180,
   type: 150,
   tags: 150,
@@ -306,7 +308,8 @@ export function SheetView() {
   // Auto-fit expresses every column as a % of totalTableWidth instead of a literal px
   // value, so the browser rescales all of them together (keeping their relative
   // proportions) whenever the window/container resizes -- no JS measurement needed.
-  const colWidth = (px: number) => (autoFit ? `${(px / totalTableWidth) * 100}%` : px);
+  const colWidth = (px: number, fixed = false) =>
+    autoFit && !fixed ? `${(px / totalTableWidth) * 100}%` : px;
 
   // Applies one cell edit without reloading/refreshing -- used directly by paste so a
   // multi-cell paste only triggers a single reload at the end, not one per cell.
@@ -645,8 +648,8 @@ export function SheetView() {
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
-      <div className="flex-none p-4 pb-2">
-        <div className="rounded-lg bg-black/5 px-3 py-2 dark:bg-white/10">
+      <div className="flex-none">
+        <div className="bg-black/5 px-3 py-2 dark:bg-white/10">
           <ListFilters
             value={filters}
             onChange={updateFilters}
@@ -738,13 +741,16 @@ export function SheetView() {
           style={{ tableLayout: "fixed", width: autoFit ? "100%" : totalTableWidth }}
         >
           <colgroup>
-            <col style={{ width: colWidth(CHECKBOX_COLUMN_WIDTH) }} />
+            <col style={{ width: colWidth(CHECKBOX_COLUMN_WIDTH, true) }} />
             {visibleColumns.map((col) => (
-              <col key={col.key} style={{ width: colWidth(columnWidths[col.key]) }} />
+              <col
+                key={col.key}
+                style={{ width: colWidth(col.key === "fav" ? CHECKBOX_COLUMN_WIDTH : columnWidths[col.key], col.key === "fav") }}
+              />
             ))}
           </colgroup>
-          <thead>
-            <tr className="group border-b border-black/10 text-left text-xs uppercase tracking-wide text-black/50 dark:border-white/10 dark:text-white/50">
+          <thead className="sticky top-0 z-10 border-b border-black/10 bg-background dark:border-white/10">
+            <tr className="group text-left text-xs font-semibold uppercase tracking-wide text-black/50 dark:text-white/50">
               <th className="px-3 py-2" />
               {visibleColumns.map((col) => {
                 const active = col.key === sortColumn;
@@ -800,12 +806,14 @@ export function SheetView() {
             <ContextMenu key={r.id}>
               <ContextMenuTrigger asChild>
                 <tr className="border-b border-black/5 dark:border-white/5 hover:bg-black/[.02] dark:hover:bg-white/5">
-                  <td className="px-3 py-2">
-                    <input
-                      type="checkbox"
-                      checked={selectedIds.has(r.id)}
-                      onChange={() => toggleSelect(r.id)}
-                    />
+                  <td className="p-0">
+                    <div className="flex h-9 items-center justify-center">
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.has(r.id)}
+                        onChange={() => toggleSelect(r.id)}
+                      />
+                    </div>
                   </td>
                   {visibleColumns.map((col) => (
                     <td
