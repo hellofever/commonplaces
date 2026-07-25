@@ -18,7 +18,7 @@ export function Dropdown({
   panelClassName = "w-56",
 }: {
   trigger: (state: { open: boolean; toggle: () => void }) => React.ReactNode;
-  children: React.ReactNode;
+  children: React.ReactNode | ((state: { open: boolean; toggle: () => void }) => React.ReactNode);
   align?: "left" | "right";
   panelClassName?: string;
 }) {
@@ -36,16 +36,18 @@ export function Dropdown({
     return () => document.removeEventListener("click", handleClick);
   }, [open]);
 
+  const toggle = () => setOpen((o) => !o);
+
   return (
     <div ref={containerRef} className="relative">
-      {trigger({ open, toggle: () => setOpen((o) => !o) })}
+      {trigger({ open, toggle })}
       {open && (
         <div
           className={`absolute top-full z-20 mt-1 rounded-lg border border-black/10 bg-white p-3 shadow-lg dark:border-white/10 dark:bg-zinc-900 ${
             align === "right" ? "right-0" : "left-0"
           } ${panelClassName}`}
         >
-          {children}
+          {typeof children === "function" ? children({ open, toggle }) : children}
         </div>
       )}
     </div>

@@ -40,6 +40,7 @@ import {
 } from "@/lib/sheetSort";
 import { CaretDown, CaretUp, DownloadSimple, MapPin, Plus, Trash } from "@phosphor-icons/react";
 import { downloadCsv, restaurantsToCsv } from "@/lib/csv";
+import { downloadKml, restaurantsToKml } from "@/lib/kml";
 import type { Restaurant } from "@/lib/types";
 
 // Default column order -- the user's own order (once loaded/saved via
@@ -478,6 +479,11 @@ export function SheetView() {
     downloadCsv(`restaurants-${date}.csv`, restaurantsToCsv(restaurants));
   }
 
+  function exportKml() {
+    const date = new Date().toISOString().slice(0, 10);
+    downloadKml(`restaurants-${date}.kml`, restaurantsToKml(restaurants));
+  }
+
   function goToPlace(restaurant: Restaurant) {
     router.push(`/?view=map&place=${restaurant.id}`);
   }
@@ -724,10 +730,42 @@ export function SheetView() {
                     </button>
                   </div>
                 )}
-                <button type="button" onClick={exportCsv} className={dropdownTriggerClass}>
-                  <DownloadSimple size={14} weight="bold" className="mr-1 inline-block align-[-2px]" />
-                  Export CSV
-                </button>
+                <Dropdown
+                  align="right"
+                  panelClassName="w-40"
+                  trigger={({ open, toggle }) => (
+                    <button type="button" onClick={toggle} className={dropdownTriggerClass}>
+                      <DownloadSimple size={14} weight="bold" className="mr-1 inline-block align-[-2px]" />
+                      Export
+                      {open ? <CaretUp size={12} weight="bold" /> : <CaretDown size={12} weight="bold" />}
+                    </button>
+                  )}
+                >
+                  {({ toggle }) => (
+                    <div className="flex flex-col gap-0.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          exportCsv();
+                          toggle();
+                        }}
+                        className="rounded px-2 py-1.5 text-left text-xs text-black/70 hover:bg-black/5 dark:text-white/70 dark:hover:bg-white/10"
+                      >
+                        Export as CSV
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          exportKml();
+                          toggle();
+                        }}
+                        className="rounded px-2 py-1.5 text-left text-xs text-black/70 hover:bg-black/5 dark:text-white/70 dark:hover:bg-white/10"
+                      >
+                        Export as KML
+                      </button>
+                    </div>
+                  )}
+                </Dropdown>
               </div>
             </div>
             }
