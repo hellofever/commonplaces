@@ -170,4 +170,25 @@
   h1, h2, h3, h4, h5, h6 {
     @apply font-heading uppercase;
   }
+
+  /* touch-action (not the viewport meta tag -- see app/layout.tsx's viewport export
+     comment for why a page-wide meta-based zoom disable was tried and reverted, it
+     fought iOS Safari's own visual-viewport scaling math and broke fixed-position
+     layout). touch-action governs gesture handling per-element without touching that
+     viewport math, so it avoids the same failure mode while still killing pinch/
+     double-tap zoom everywhere outside the map. MapView's <Map> div sets its own
+     touch-none + gestureHandling="greedy" and stays the sole owner of gestures there. */
+  html, body {
+    touch-action: pan-x pan-y;
+    overscroll-behavior: none;
+  }
+
+  /* iOS Safari auto-zooms the page on focus for any text input/textarea/select whose
+     computed font-size is under 16px -- every form control in this app uses text-sm
+     (14px), so bump to 16px on mobile widths only, where the zoom actually happens. */
+  @media (max-width: 767px) {
+    input, textarea, select {
+      font-size: 16px;
+    }
+  }
 }

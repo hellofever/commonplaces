@@ -389,7 +389,7 @@ export function ListView() {
           }
         />
       </div>
-      <div className="flex flex-1 flex-col overflow-y-auto p-4 pt-0">
+      <div className="flex flex-1 flex-col overflow-y-auto overscroll-contain p-4 pt-0">
         <div
           className={
             displayMode === "card"

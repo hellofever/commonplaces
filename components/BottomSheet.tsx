@@ -38,7 +38,7 @@ export function BottomSheet({
       <SheetContent
         side={side}
         showCloseButton={false}
-        className={`gap-0 overflow-y-auto ${radiusClassName} ${paddingClassName} sm:inset-0! sm:m-auto! sm:w-full ${widthClassName} ${heightClassName}`}
+        className={`gap-0 overflow-y-auto overscroll-contain ${radiusClassName} ${paddingClassName} sm:inset-0! sm:m-auto! sm:w-full ${widthClassName} ${heightClassName}`}
       >
         <SheetTitle className="sr-only">Panel</SheetTitle>
         {children}

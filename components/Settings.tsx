@@ -33,7 +33,7 @@ export function Settings() {
   return (
     <div className="flex gap-6 md:h-full">
       <div
-        className={`${drilledIn ? "hidden md:block" : "block"} w-full shrink-0 rounded-xl bg-black/[.03] p-2 md:h-full md:w-40 md:overflow-y-auto dark:bg-white/[.04]`}
+        className={`${drilledIn ? "hidden md:block" : "block"} w-full shrink-0 rounded-xl bg-black/[.03] p-2 md:h-full md:w-40 md:overflow-y-auto md:overscroll-contain dark:bg-white/[.04]`}
       >
         <nav className="flex flex-col gap-0.5">
           {CATEGORIES.map(({ id, label, icon: Icon }) => {
@@ -58,7 +58,7 @@ export function Settings() {
       </div>
 
       <div
-        className={`${drilledIn ? "block" : "hidden md:block"} min-w-0 flex-1 md:h-full md:overflow-y-auto`}
+        className={`${drilledIn ? "block" : "hidden md:block"} min-w-0 flex-1 md:h-full md:overflow-y-auto md:overscroll-contain`}
       >
         <button
           type="button"

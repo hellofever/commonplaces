@@ -735,7 +735,7 @@ export function SheetView() {
         </div>
       </div>
 
-      <div className="flex-1 overflow-auto p-4 pt-0">
+      <div className="flex-1 overflow-auto overscroll-contain p-4 pt-0">
         <table
           className="border-collapse font-sans text-sm"
           style={{ tableLayout: "fixed", width: autoFit ? "100%" : totalTableWidth }}

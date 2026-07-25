@@ -269,7 +269,7 @@ export function MapSearchExpand() {
       />
 
       {expanded && (
-        <div className="absolute left-1/2 top-full z-30 mt-1 hidden max-h-[60vh] w-[26rem] max-w-[90vw] -translate-x-1/2 overflow-y-auto rounded-lg border border-black/10 bg-white p-4 shadow-lg md:block dark:border-white/10 dark:bg-zinc-900">
+        <div className="absolute left-1/2 top-full z-30 mt-1 hidden max-h-[60vh] w-[26rem] max-w-[90vw] -translate-x-1/2 overflow-y-auto overscroll-contain rounded-lg border border-black/10 bg-white p-4 shadow-lg md:block dark:border-white/10 dark:bg-zinc-900">
           {panel}
         </div>
       )}
@@ -304,7 +304,7 @@ export function MapSearchExpand() {
                 className="min-w-0 flex-1"
               />
             </div>
-            <div className="flex-1 overflow-y-auto px-4 py-4">{panel}</div>
+            <div className="flex-1 overflow-y-auto overscroll-contain px-4 py-4">{panel}</div>
             {(value.trim() || activeCount > 0) && (
               <div className="border-t border-black/10 p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] dark:border-white/10">
                 <button
