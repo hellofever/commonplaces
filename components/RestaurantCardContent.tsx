@@ -23,12 +23,14 @@ export function RestaurantCardContent({
   onLocate,
   locateActive = false,
   showActions = true,
+  closeButtonPosition = "inline",
 }: {
   restaurant: Restaurant;
   onClose?: () => void;
   onLocate?: () => void;
   locateActive?: boolean;
   showActions?: boolean;
+  closeButtonPosition?: "inline" | "corner";
 }) {
   const { openDetail, patchRestaurantCache } = useRestaurantUI();
   const openStatus = getOpenStatus(restaurant.opening_hours);
@@ -58,8 +60,14 @@ export function RestaurantCardContent({
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-center gap-2">
-        <h3 className="min-w-0 flex-1 text-xl font-semibold">{restaurant.name}</h3>
-        {onClose && (
+        <h3
+          className={`min-w-0 flex-1 text-xl font-semibold ${
+            closeButtonPosition === "corner" ? "pr-8" : ""
+          }`}
+        >
+          {restaurant.name}
+        </h3>
+        {onClose && closeButtonPosition === "inline" && (
           <button
             type="button"
             onClick={onClose}

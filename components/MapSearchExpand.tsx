@@ -82,8 +82,8 @@ export function SearchField({
 // just activates/deactivates, no separate "create new" affordance here) to filter the
 // map, or (once typing) live restaurant results styled like the map's mini card.
 // Picking a result routes through the same ?place=<id> param List/Sheet's "go to
-// place" actions already use, so MapView's existing focusPlaceId/FocusOnPlace handling
-// does the panning + mini-card work for free.
+// place" actions already use, so MapView's existing focusPlaceId/PanToSelectedRestaurant
+// handling does the panning + mini-card work for free.
 //
 // The typed text is local-only, not synced to the shared ?q= param Header uses for
 // List/Sheet -- search here is purely a "find and go to a place" tool, it never hides

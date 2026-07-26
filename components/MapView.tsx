@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { APIProvider, Map, AdvancedMarker, useMap, useAdvancedMarkerRef } from "@vis.gl/react-google-maps";
 import { MarkerClusterer, type Cluster, type Renderer } from "@googlemaps/markerclusterer";
 import { ArrowsHorizontal, Compass, GpsFix } from "@phosphor-icons/react";
@@ -36,16 +36,38 @@ const FIT_MAX_ZOOM = 16;
 // coordinate), landing no wider than roughly a metro area.
 const RESET_MIN_ZOOM = DESTINATION_ZOOM - 4;
 
-// Imperatively pans/zooms once both the map instance and the target restaurant are
+// Imperatively pans/zooms once both the map instance and the selected restaurant are
 // ready -- can't just use a smarter defaultCenter/defaultZoom, since the restaurant
-// list (and therefore which one matches focusPlaceId) loads asynchronously after the
-// Map has already mounted at its default view.
-function FocusOnPlace({ restaurant }: { restaurant: Restaurant | null }) {
+// list (and therefore which one matches a `?place=` deep link) loads asynchronously
+// after the Map has already mounted at its default view. Covers every way a restaurant
+// becomes selected (a marker tap setting selectedId, or the deep link), not just the
+// deep-link case -- RestaurantMarker's onClick used to also pan directly, but centralizing
+// it here means the vertical-offset math below (see animateFocusOnRestaurant) only has
+// to live in one place. Keyed on the id, not the restaurant object -- `restaurants` is
+// replaced wholesale on every background refresh (see the memo comment on
+// RestaurantMarker above), so keying on identity would re-pan on every unrelated poll
+// while a pin stays selected.
+function PanToSelectedRestaurant({
+  restaurant,
+  desktopCardRef,
+  mobileCardRef,
+}: {
+  restaurant: Restaurant | null;
+  desktopCardRef: RefObject<HTMLDivElement | null>;
+  mobileCardRef: RefObject<HTMLDivElement | null>;
+}) {
   const map = useMap();
   useEffect(() => {
-    if (!map || !restaurant || restaurant.lat == null || restaurant.lng == null) return;
-    animateCameraTo(map, { lat: restaurant.lat, lng: restaurant.lng, zoom: FOCUS_ZOOM });
-  }, [map, restaurant]);
+    if (!map || !restaurant) return;
+    // Only one of the two MapBottomCard instances is ever actually visible at a given
+    // viewport width (the other is `display:none` via the hidden md:block/md:hidden
+    // wrappers in MapView below, which collapses its rect to zero) -- picking whichever
+    // has real height is what makes this respond to the current breakpoint.
+    const desktopRect = desktopCardRef.current?.getBoundingClientRect();
+    const overlayEl = desktopRect && desktopRect.height > 0 ? desktopCardRef.current : mobileCardRef.current;
+    animateFocusOnRestaurant(map, restaurant, overlayEl);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map, restaurant?.id]);
   return null;
 }
 
@@ -96,7 +118,8 @@ function FitToFilter({ active, restaurants }: { active: boolean; restaurants: Ge
 // list first resolves -- `done` guards it to run at most once per mount, so it doesn't
 // fight the user's own panning/zooming afterwards, or FitToFilter/RecenterOnDestinationChange
 // on later renders. Skipped when a filter is already active (FitToFilter owns the fit
-// in that case) or the map is deep-linking to one specific place (FocusOnPlace owns it).
+// in that case) or the map is deep-linking to one specific place (PanToSelectedRestaurant
+// owns it).
 function FitToAllOnLoad({ restaurants, skip }: { restaurants: GeoRestaurant[]; skip: boolean }) {
   const map = useMap();
   const done = useRef(false);
@@ -174,7 +197,6 @@ const RestaurantMarker = memo(function RestaurantMarker({
   // doesn't defeat this component's own React.memo.
   registerMarker: (id: string, marker: google.maps.marker.AdvancedMarkerElement | null) => void;
 }) {
-  const map = useMap();
   const [markerRef, marker] = useAdvancedMarkerRef();
 
   useEffect(() => {
@@ -188,10 +210,7 @@ const RestaurantMarker = memo(function RestaurantMarker({
     <AdvancedMarker
       ref={markerRef}
       position={{ lat: restaurant.lat, lng: restaurant.lng }}
-      onClick={() => {
-        if (map) animateCameraTo(map, { lat: restaurant.lat, lng: restaurant.lng, zoom: FOCUS_ZOOM });
-        onSelect(restaurant);
-      }}
+      onClick={() => onSelect(restaurant)}
     >
       {/* Fixed-size wrapper keeps the marker's anchor point stable -- the halo and
           scale transform below are purely visual and must never grow this box, or the
@@ -365,41 +384,46 @@ function easeOutCubic(t: number) {
 // same window, which is what reads as "too fast." Duration instead scales with how
 // much the camera actually has to move: pan distance in on-screen pixels (projected at
 // the zoom level roughly midway between start/target, since that's what the animation
-// is actually passing through) plus how many zoom levels it crosses, whichever is
-// larger. Clamped to a floor/ceiling so tiny moves don't snap instantly and huge ones
-// don't crawl -- the goal is a consistent "mid speed" feel, not literally constant
-// pixel-speed.
-const MIN_ANIMATION_MS = 500;
-const MAX_ANIMATION_MS = 3000;
-const PIXELS_PER_MS = 0.65;
-const MS_PER_ZOOM_LEVEL = 260;
-// Fallback for the (practically never hit) case where the map's projection isn't
-// ready yet -- matches this file's old flat duration rather than guessing.
-const FALLBACK_ANIMATION_MS = 1600;
+// is actually passing through) and how many zoom levels it crosses, combined into a
+// single unitless "effort" score (whichever of the two is larger -- an animation only
+// needs to be as long as its slower-moving dimension, not the sum of both) and mapped
+// through a saturating curve rather than a hard linear clamp. A hard floor/ceiling
+// clamp (the previous approach) collapses every move below the floor threshold to one
+// identical duration -- and for this app, "tap a pin that's already on screen" is
+// almost always below that threshold, which is exactly what read as "everything feels
+// the same." The exponential curve below has no plateau: even a small nudge lands at a
+// slightly different duration than a smaller or larger one, while very large jumps
+// smoothly approach the ceiling instead of jumping straight to it.
+const REFERENCE_PIXELS = 128;
+const REFERENCE_ZOOM_LEVELS = 1;
+const MIN_ANIMATION_MS = 88;
+const MAX_ANIMATION_MS = 960;
+
+function durationForEffort(effort: number) {
+  return MIN_ANIMATION_MS + (MAX_ANIMATION_MS - MIN_ANIMATION_MS) * (1 - Math.exp(-effort));
+}
 
 function animationDurationFor(
   map: google.maps.Map,
   start: { lat: number; lng: number; zoom: number },
   target: { lat: number; lng: number; zoom: number }
 ) {
-  const zoomMs = Math.abs(target.zoom - start.zoom) * MS_PER_ZOOM_LEVEL;
+  const zoomEffort = Math.abs(target.zoom - start.zoom) / REFERENCE_ZOOM_LEVELS;
   const projection = map.getProjection();
-  if (!projection) return Math.min(MAX_ANIMATION_MS, Math.max(MIN_ANIMATION_MS, zoomMs || FALLBACK_ANIMATION_MS));
+  if (!projection) return durationForEffort(zoomEffort);
 
   const startPoint = projection.fromLatLngToPoint(new google.maps.LatLng(start.lat, start.lng));
   const targetPoint = projection.fromLatLngToPoint(new google.maps.LatLng(target.lat, target.lng));
-  if (!startPoint || !targetPoint) {
-    return Math.min(MAX_ANIMATION_MS, Math.max(MIN_ANIMATION_MS, zoomMs || FALLBACK_ANIMATION_MS));
-  }
+  if (!startPoint || !targetPoint) return durationForEffort(zoomEffort);
 
   // fromLatLngToPoint returns "world coordinates" (the whole world spans 256x256
   // units, independent of zoom) -- scale by 2^zoom to get actual on-screen pixels at
   // the zoom the animation is passing through.
   const scale = Math.pow(2, (start.zoom + target.zoom) / 2);
   const pixelDistance = Math.hypot((targetPoint.x - startPoint.x) * scale, (targetPoint.y - startPoint.y) * scale);
-  const panMs = pixelDistance / PIXELS_PER_MS;
+  const panEffort = pixelDistance / REFERENCE_PIXELS;
 
-  return Math.min(MAX_ANIMATION_MS, Math.max(MIN_ANIMATION_MS, panMs, zoomMs));
+  return durationForEffort(Math.max(panEffort, zoomEffort));
 }
 
 // panTo() alone only animates the pan, not the zoom -- there's no built-in "animate to
@@ -430,6 +454,67 @@ export function animateCameraTo(map: google.maps.Map, target: { lat: number; lng
     if (t < 1) requestAnimationFrame(step);
   }
   requestAnimationFrame(step);
+}
+
+// A plain "pan to a restaurant's coordinates" centers it in the *whole* map container --
+// but MapBottomCard then overlays the bottom of that same container (see MapView below),
+// so the pin ends up dead-center in a box that isn't all visible, reading as sitting too
+// low. This instead centers it in the space actually left over: container height minus
+// the overlay's own footprint, not "container top to overlay top" -- the latter
+// undercounts whatever margin sits between the overlay's bottom and the container's
+// bottom edge (desktop's card floats bottom-4 off the edge, so that gap is still visible
+// map and should count; mobile's sheet sits flush at the bottom with no such gap, so
+// this is a no-op there). Returns 0 (no adjustment) when there's no overlay yet to avoid
+// -- `overlayEl` null, or a hidden (display:none, zero-height) card -- so a plain center
+// is still correct whenever there's nothing covering the map.
+function verticalCenterOffset(mapDiv: HTMLElement, overlayEl: HTMLElement | null) {
+  const containerRect = mapDiv.getBoundingClientRect();
+  const overlayRect = overlayEl?.getBoundingClientRect();
+  if (!overlayRect || overlayRect.height === 0) return 0;
+
+  const visibleCenterY = containerRect.top + (containerRect.height - overlayRect.height) / 2;
+  const containerCenterY = containerRect.top + containerRect.height / 2;
+  return containerCenterY - visibleCenterY;
+}
+
+// Combines the two: pans/zooms to a restaurant like animateCameraTo would, but shifted
+// so it lands at the vertical center of whatever space is actually visible above
+// `overlayEl` (MapBottomCard's rendered root -- see PanToSelectedRestaurant and
+// MapBottomCard's own "Locate on map" button, the two callers) instead of the
+// container's literal center. Only vertical position is adjusted -- horizontal stays
+// centered as before, nothing in this app's overlay chrome eats into map width.
+export function animateFocusOnRestaurant(
+  map: google.maps.Map,
+  restaurant: { lat: number | null; lng: number | null },
+  overlayEl: HTMLElement | null
+) {
+  if (restaurant.lat == null || restaurant.lng == null) return;
+  const target = { lat: restaurant.lat, lng: restaurant.lng, zoom: FOCUS_ZOOM };
+
+  const offsetY = verticalCenterOffset(map.getDiv(), overlayEl);
+  const projection = map.getProjection();
+  if (offsetY === 0 || !projection) {
+    animateCameraTo(map, target);
+    return;
+  }
+
+  // Same world-coordinate/pixel conversion animationDurationFor uses, run in reverse:
+  // given where we want the restaurant to render on screen (offsetY px above the
+  // container's true center), solve for the map center that puts it there, instead of
+  // measuring a distance between two known points.
+  const restaurantPoint = projection.fromLatLngToPoint(new google.maps.LatLng(target.lat, target.lng));
+  if (!restaurantPoint) {
+    animateCameraTo(map, target);
+    return;
+  }
+  const scale = Math.pow(2, FOCUS_ZOOM);
+  const adjustedCenterPoint = new google.maps.Point(restaurantPoint.x, restaurantPoint.y + offsetY / scale);
+  const adjustedCenter = projection.fromPointToLatLng(adjustedCenterPoint);
+  if (!adjustedCenter) {
+    animateCameraTo(map, target);
+    return;
+  }
+  animateCameraTo(map, { lat: adjustedCenter.lat(), lng: adjustedCenter.lng(), zoom: FOCUS_ZOOM });
 }
 
 // The Maps JS API has no synchronous "what zoom would fitBounds pick" query -- this
@@ -639,6 +724,8 @@ export function MapView({
   const [clusteringEnabled] = useClusteringEnabled();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const centerBeforeResize = useRef<google.maps.LatLng | null>(null);
+  const desktopCardRef = useRef<HTMLDivElement | null>(null);
+  const mobileCardRef = useRef<HTMLDivElement | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [locateActive, setLocateActive] = useState(false);
@@ -752,7 +839,11 @@ export function MapView({
             <FitToFilter active={filtersActive} restaurants={geoTagged} />
             <FitToAllOnLoad restaurants={geoTagged} skip={filtersActive || Boolean(focusPlaceId)} />
             {activeDestination && <RecenterOnDestinationChange destination={activeDestination} />}
-            <FocusOnPlace restaurant={focusedRestaurant} />
+            <PanToSelectedRestaurant
+              restaurant={selectedRestaurant}
+              desktopCardRef={desktopCardRef}
+              mobileCardRef={mobileCardRef}
+            />
             <ClusteredMarkers
               // Forces a clean remount on toggle (see ClusteredMarkers' `enabled` prop
               // comment) instead of trying to un-hide already-clustered markers by hand.
@@ -776,7 +867,11 @@ export function MapView({
             <LocateMeButton active={locateActive} onLocated={handleLocated} />
           </div>
           <div className="hidden md:block">
-            <MapBottomCard restaurant={selectedRestaurant} onClose={() => setSelectedId(null)} />
+            <MapBottomCard
+              restaurant={selectedRestaurant}
+              onClose={() => setSelectedId(null)}
+              overlayRef={desktopCardRef}
+            />
           </div>
 
           {/* Mobile: one bottom-anchored flex column so the full-width card sliding in
@@ -792,6 +887,7 @@ export function MapView({
               restaurant={selectedRestaurant}
               onClose={() => setSelectedId(null)}
               variant="sheet"
+              overlayRef={mobileCardRef}
             />
           </div>
         </div>
