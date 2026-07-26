@@ -15,18 +15,39 @@ import {
 } from "@phosphor-icons/react";
 import { deleteRestaurants } from "@/lib/restaurants";
 import { fetchFirstPhotoUrls } from "@/lib/photos";
-import { PHOSPHOR_ICON_MAP, tagColor, tagIcon, tagMapColor } from "@/lib/tags";
+import { PHOSPHOR_ICON_MAP, tagColor, tagIcon, tagMapColor, type Tag } from "@/lib/tags";
 import { matchesQuery } from "@/lib/search";
 import { useRestaurantUI } from "@/components/AppShell";
 import { BottomSheet, ModalHeader } from "@/components/BottomSheet";
 import { Dropdown, dropdownTriggerClass } from "@/components/Dropdown";
 import { FadeImage } from "@/components/FadeImage";
 import { ListFilters, matchesFilters, type FilterState } from "@/components/ListFilters";
-import { DEFAULT_SORT, SORT_OPTIONS, groupByArea, isSortKey, sortRestaurants } from "@/lib/sort";
+import {
+  DEFAULT_GROUP_BY,
+  DEFAULT_SORT,
+  GROUP_BY_OPTIONS,
+  SORT_OPTIONS,
+  groupByFacet,
+  isGroupByKey,
+  isSortKey,
+  sortRestaurants,
+} from "@/lib/sort";
 import type { Restaurant } from "@/lib/types";
 
 type DisplayMode = "list" | "card";
 const DEFAULT_DISPLAY: DisplayMode = "list";
+
+function GroupTagIcon({ tag }: { tag: Tag }) {
+  const Icon = PHOSPHOR_ICON_MAP[tagIcon(tag)];
+  return (
+    <span
+      className="flex h-7 w-7 flex-none items-center justify-center rounded-full"
+      style={{ background: tagMapColor(tag) }}
+    >
+      <Icon size={16} weight="bold" color="#ffffff" />
+    </span>
+  );
+}
 
 function restaurantMeta(r: Restaurant): React.ReactNode {
   if (r.types.length === 0 && r.areas.length === 0 && r.tags.length === 0) return r.address;
@@ -86,7 +107,7 @@ function RestaurantRow({
         )}
       </span>
       <span className="flex min-w-0 flex-1 flex-col gap-2">
-        <span className="font-heading block text-base uppercase">
+        <span className="font-heading block text-base uppercase leading-[1.2]">
           {r.is_favourite && (
             <Star size={16} weight="fill" className="mr-1 inline-block align-[-3px] text-red-500" />
           )}
@@ -136,7 +157,7 @@ function RestaurantCard({
         )}
       </div>
       <span className="flex flex-col gap-1 p-3">
-        <span className="font-heading line-clamp-1 text-sm uppercase">
+        <span className="font-heading line-clamp-1 text-sm uppercase leading-[1.2]">
           {r.is_favourite && (
             <Star size={14} weight="fill" className="mr-1 inline-block align-[-2px] text-red-500" />
           )}
@@ -303,9 +324,20 @@ export function ListView() {
     router.replace(qs ? `${pathname}?${qs}` : pathname);
   }
 
+  const groupByParam = searchParams.get("groupBy");
+  const groupBy = isGroupByKey(groupByParam) ? groupByParam : DEFAULT_GROUP_BY;
+
+  function updateGroupBy(next: string) {
+    const params = new URLSearchParams(searchParams.toString());
+    if (next === DEFAULT_GROUP_BY) params.delete("groupBy");
+    else params.set("groupBy", next);
+    const qs = params.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname);
+  }
+
   const matched = restaurants.filter((r) => matchesQuery(r, query) && matchesFilters(r, filters));
-  const groupedByArea = sort === "area" ? groupByArea(matched) : null;
-  const flat = groupedByArea ? null : sortRestaurants(matched, sort);
+  const grouped = groupBy !== "none" ? groupByFacet(matched, groupBy, sort) : null;
+  const flat = grouped ? null : sortRestaurants(matched, sort);
 
   if (restaurants.length === 0) {
     return (
@@ -323,7 +355,7 @@ export function ListView() {
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
-      <div className="mb-6 bg-black/5 px-3 py-2 dark:bg-white/10">
+      <div className="mb-3 bg-black/5 px-3 py-2 dark:bg-white/10">
         <ListFilters
           value={filters}
           onChange={updateFilters}
@@ -348,6 +380,35 @@ export function ListView() {
                       onClick={() => updateSort(o.value)}
                       className={`rounded-md px-2.5 py-1.5 text-left text-sm ${
                         o.value === sort
+                          ? "bg-black/[.04] font-medium dark:bg-white/[.08]"
+                          : "hover:bg-black/[.03] dark:hover:bg-white/[.05]"
+                      }`}
+                    >
+                      {o.label}
+                    </button>
+                  ))}
+                </div>
+              </Dropdown>
+              <Dropdown
+                key={groupBy}
+                panelClassName="w-52"
+                trigger={({ open, toggle }) => (
+                  <button type="button" onClick={toggle} className={dropdownTriggerClass}>
+                    {groupBy === "none"
+                      ? "Group by"
+                      : `Group: ${GROUP_BY_OPTIONS.find((o) => o.value === groupBy)?.label}`}
+                    {open ? <CaretUp size={12} weight="bold" /> : <CaretDown size={12} weight="bold" />}
+                  </button>
+                )}
+              >
+                <div className="flex flex-col gap-1">
+                  {GROUP_BY_OPTIONS.map((o) => (
+                    <button
+                      key={o.value}
+                      type="button"
+                      onClick={() => updateGroupBy(o.value)}
+                      className={`rounded-md px-2.5 py-1.5 text-left text-sm ${
+                        o.value === groupBy
                           ? "bg-black/[.04] font-medium dark:bg-white/[.08]"
                           : "hover:bg-black/[.03] dark:hover:bg-white/[.05]"
                       }`}
@@ -397,16 +458,15 @@ export function ListView() {
               : "mx-auto flex w-full max-w-[800px] flex-col gap-8"
           }
         >
-          {groupedByArea
-            ? groupedByArea.map((group, i) => (
+          {grouped
+            ? grouped.map((group) => (
                 <div
-                  key={group.areaName}
+                  key={group.groupName}
                   className={displayMode === "card" ? "col-span-full flex flex-col gap-4" : "flex flex-col gap-8"}
                 >
-                  <h3
-                    className={`px-1 text-xs uppercase tracking-wide text-black/50 dark:text-white/50 ${i === 0 ? "" : "pt-3"}`}
-                  >
-                    {group.areaName}
+                  <h3 className="sticky top-0 z-10 flex items-center gap-2 bg-background px-1 pb-2 pt-2 text-2xl uppercase tracking-wide text-black dark:text-white">
+                    {groupBy === "types" && group.tag && <GroupTagIcon tag={group.tag} />}
+                    {group.groupName}
                   </h3>
                   {displayMode === "card" ? (
                     <div className="grid grid-cols-2 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 min-[1440px]:grid-cols-6">

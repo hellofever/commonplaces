@@ -1,3 +1,4 @@
+import type { Tag } from "./tags";
 import type { Restaurant } from "./types";
 
 export type SortKey =
@@ -6,8 +7,7 @@ export type SortKey =
   | "created-desc"
   | "price-asc"
   | "price-desc"
-  | "favourites-first"
-  | "area";
+  | "favourites-first";
 
 export const DEFAULT_SORT: SortKey = "name-asc";
 
@@ -18,20 +18,14 @@ export const SORT_OPTIONS: { value: SortKey; label: string }[] = [
   { value: "price-asc", label: "Price (low to high)" },
   { value: "price-desc", label: "Price (high to low)" },
   { value: "favourites-first", label: "Favourites first" },
-  { value: "area", label: "Area" },
 ];
 
 export function isSortKey(value: string | null): value is SortKey {
   return SORT_OPTIONS.some((o) => o.value === value);
 }
 
-const NO_AREA_LABEL = "No area";
-
 // Sorts a copy of the list -- never mutates the input. Restaurants with no price_level
 // sort to the end regardless of direction, since there's nothing meaningful to compare.
-// "area" doesn't reorder in place -- it's rendered as grouped sections instead (see
-// groupByArea), this case just gives a sane flat fallback if sortRestaurants is ever
-// called directly for it.
 export function sortRestaurants(list: Restaurant[], sort: SortKey): Restaurant[] {
   const sorted = [...list];
   switch (sort) {
@@ -49,46 +43,74 @@ export function sortRestaurants(list: Restaurant[], sort: SortKey): Restaurant[]
       return sorted.sort((a, b) => (b.price_level ?? -Infinity) - (a.price_level ?? -Infinity));
     case "favourites-first":
       return sorted.sort((a, b) => Number(b.is_favourite) - Number(a.is_favourite));
-    case "area": {
-      const areaName = (r: Restaurant) => r.areas[0]?.name ?? "￿";
-      return sorted.sort(
-        (a, b) => areaName(a).localeCompare(areaName(b)) || a.name.localeCompare(b.name)
-      );
-    }
     default:
       return sorted;
   }
 }
 
-export interface AreaGroup {
-  areaName: string;
+export type GroupByKey = "none" | "types" | "tags" | "areas";
+
+export const DEFAULT_GROUP_BY: GroupByKey = "none";
+
+export const GROUP_BY_OPTIONS: { value: GroupByKey; label: string }[] = [
+  { value: "none", label: "None" },
+  { value: "types", label: "Type" },
+  { value: "tags", label: "Tags" },
+  { value: "areas", label: "Area" },
+];
+
+export function isGroupByKey(value: string | null): value is GroupByKey {
+  return GROUP_BY_OPTIONS.some((o) => o.value === value);
+}
+
+export interface FacetGroup {
+  groupName: string;
+  // The Tag row backing this group (null for the trailing "No ..." group) -- lets the
+  // List view show a group's colour/icon next to its heading (only "type" tags carry
+  // those, see lib/tags.ts createTag) without a second lookup by name.
+  tag: Tag | null;
   restaurants: Restaurant[];
 }
 
-// Groups restaurants by area for the "Area" sort's sectioned view. A restaurant with
-// multiple areas appears once per area it belongs to (duplicated across groups) rather
-// than being filed under just one, so nothing it's tagged with is hidden. Restaurants
-// with no area go in a trailing "No area" group. Groups are alphabetical; restaurants
-// within a group are alphabetical by name.
-export function groupByArea(list: Restaurant[]): AreaGroup[] {
+type FacetKey = Exclude<GroupByKey, "none">;
+
+const NO_GROUP_LABEL: Record<FacetKey, string> = {
+  types: "No type",
+  tags: "No tags",
+  areas: "No area",
+};
+
+// Groups restaurants by one of their tag-style facets (type/tags/area) for the List
+// view's "Group by" toolbar toggle. A restaurant with multiple values for that facet
+// appears once per value (duplicated across groups) rather than being filed under just
+// one, so nothing it's tagged with is hidden. Restaurants with no value for the facet go
+// in a trailing "No ..." group. Groups are alphabetical; restaurants within a group keep
+// whatever order the current Sort produces, so Group by and Sort compose independently.
+export function groupByFacet(list: Restaurant[], facet: FacetKey, sort: SortKey): FacetGroup[] {
+  const noGroupLabel = NO_GROUP_LABEL[facet];
   const groups = new Map<string, Restaurant[]>();
+  const tagByName = new Map<string, Tag>();
 
   for (const r of list) {
-    const areaNames = r.areas.length > 0 ? r.areas.map((a) => a.name) : [NO_AREA_LABEL];
-    for (const areaName of areaNames) {
-      const bucket = groups.get(areaName);
+    const values = r[facet];
+    const names = values.length > 0 ? values.map((t) => t.name) : [noGroupLabel];
+    for (let i = 0; i < names.length; i++) {
+      const name = names[i];
+      if (values.length > 0 && !tagByName.has(name)) tagByName.set(name, values[i]);
+      const bucket = groups.get(name);
       if (bucket) bucket.push(r);
-      else groups.set(areaName, [r]);
+      else groups.set(name, [r]);
     }
   }
 
-  const areaNames = [...groups.keys()]
-    .filter((name) => name !== NO_AREA_LABEL)
+  const groupNames = [...groups.keys()]
+    .filter((name) => name !== noGroupLabel)
     .sort((a, b) => a.localeCompare(b));
-  if (groups.has(NO_AREA_LABEL)) areaNames.push(NO_AREA_LABEL);
+  if (groups.has(noGroupLabel)) groupNames.push(noGroupLabel);
 
-  return areaNames.map((areaName) => ({
-    areaName,
-    restaurants: [...groups.get(areaName)!].sort((a, b) => a.name.localeCompare(b.name)),
+  return groupNames.map((groupName) => ({
+    groupName,
+    tag: tagByName.get(groupName) ?? null,
+    restaurants: sortRestaurants(groups.get(groupName)!, sort),
   }));
 }
