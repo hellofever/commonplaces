@@ -48,6 +48,9 @@ export function AddRestaurantFlow({
   onClose: () => void;
 }) {
   const { activeDestinationId, removeRestaurantsCache } = useRestaurantUI();
+  // The restaurant's own destination on edit (editing never moves a restaurant between
+  // destinations), or whichever one is currently active on add.
+  const destinationId = editing ? editing.destination_id : activeDestinationId;
   const [step, setStep] = useState<"search" | "results" | "form">(editing ? "form" : "search");
   const [query, setQuery] = useState(initialQuery ?? "");
   const [results, setResults] = useState<SearchResult[]>([]);
@@ -115,7 +118,6 @@ export function AddRestaurantFlow({
   }
 
   async function handleSave(values: RestaurantFormValues, pendingPhotoPaths: string[]): Promise<Restaurant> {
-    const destinationId = editing ? editing.destination_id : activeDestinationId;
     if (!destinationId) throw new Error("No active destination to save this restaurant under.");
     const input = { ...values, destination_id: destinationId };
     const saved = editing ? await updateRestaurant(editing.id, input) : await insertRestaurant(input);
@@ -170,6 +172,7 @@ export function AddRestaurantFlow({
         <RestaurantForm
           initial={formInitial}
           restaurantId={editing?.id}
+          destinationId={destinationId}
           onSubmit={handleSave}
           suggestedTagName={suggestedTagName}
           onDelete={editing ? handleDelete : undefined}

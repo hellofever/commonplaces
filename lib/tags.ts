@@ -21,31 +21,52 @@ export interface Tag {
   name: string;
   color: string | null;
   icon: string | null;
+  // Scopes an "area"/"tags" row to the destination it belongs to -- always null for
+  // "type" rows, which stay one taxonomy shared by every destination. See
+  // 0012_scope_area_tags_to_destination.sql.
+  destination_id: string | null;
   created_at: string;
 }
 
-
-export async function fetchTags(kind: TagKind): Promise<Tag[]> {
-  const { data, error } = await supabase
-    .from("tags")
-    .select("*")
-    .eq("kind", kind)
-    .order("name", { ascending: true });
+// Type is one global taxonomy (destinationId is ignored); area/tags are scoped per
+// destination, so a null/missing destinationId can't return anything meaningful for
+// them -- an empty list rather than every destination's values.
+export async function fetchTags(kind: TagKind, destinationId?: string | null): Promise<Tag[]> {
+  let query = supabase.from("tags").select("*").eq("kind", kind);
+  if (kind === "type") {
+    query = query.is("destination_id", null);
+  } else {
+    if (!destinationId) return [];
+    query = query.eq("destination_id", destinationId);
+  }
+  const { data, error } = await query.order("name", { ascending: true });
 
   if (error) throw error;
   return data as Tag[];
 }
 
+// destinationId is required for area/tags kinds, ignored (always stored as null) for
+// type -- callers can pass whatever destinationId they have on hand regardless of kind.
 export async function createTag(
   kind: TagKind,
   name: string,
+  destinationId?: string | null,
   icon?: string | null,
   color?: TypeHue | null
 ): Promise<Tag> {
+  if (kind !== "type" && !destinationId) {
+    throw new Error(`Cannot create a "${kind}" tag without a destination.`);
+  }
   const resolvedColor = kind === "type" ? (color ?? (await nextPaletteColor())) : null;
   const { data, error } = await supabase
     .from("tags")
-    .insert({ kind, name, color: resolvedColor, icon: kind === "type" ? (icon ?? null) : null })
+    .insert({
+      kind,
+      name,
+      color: resolvedColor,
+      icon: kind === "type" ? (icon ?? null) : null,
+      destination_id: kind === "type" ? null : destinationId,
+    })
     .select()
     .single();
 

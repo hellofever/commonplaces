@@ -21,6 +21,7 @@ export function TagPicker({
   allowCreate = true,
   resetLabel,
   maxSelections,
+  destinationId,
 }: {
   kind: TagKind;
   label: string;
@@ -31,6 +32,9 @@ export function TagPicker({
   allowCreate?: boolean;
   resetLabel?: string;
   maxSelections?: number;
+  // Required to create a "tags"/"area" option (ignored for "type", which is global) --
+  // see lib/tags.ts createTag.
+  destinationId?: string | null;
 }) {
   const { types, tags, areas, patchTagCache } = useRestaurantUI();
   const options = { type: types, tags, area: areas }[kind];
@@ -55,9 +59,10 @@ export function TagPicker({
 
   async function handleCreate() {
     if (!createValue.trim() || atCap) return;
+    if (kind !== "type" && !destinationId) return;
     setCreating(true);
     try {
-      const tag = await createTag(kind, createValue.trim(), kind === "type" ? createIcon : null);
+      const tag = await createTag(kind, createValue.trim(), destinationId, kind === "type" ? createIcon : null);
       patchTagCache(tag);
       onChange(multiple ? [...selectedIds, tag.id] : [tag.id]);
       setCreateValue("");

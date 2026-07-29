@@ -13,6 +13,7 @@ const EMPTY_PHOTO_UPLOAD_STATE: PhotoUploadState = { pendingStoragePaths: [], up
 export function RestaurantForm({
   initial,
   restaurantId,
+  destinationId,
   onSubmit,
   submitLabel = "Save place",
   suggestedTagName,
@@ -20,6 +21,9 @@ export function RestaurantForm({
 }: {
   initial: Partial<RestaurantFormValues>;
   restaurantId?: string;
+  // The restaurant's own destination on edit, or the currently active one on add --
+  // Tags/Area are scoped per destination, so creating one needs this (see TagPicker).
+  destinationId: string | null;
   onSubmit: (values: RestaurantFormValues, pendingPhotoPaths: string[]) => Promise<Restaurant>;
   submitLabel?: string;
   suggestedTagName?: string | null;
@@ -163,9 +167,23 @@ export function RestaurantForm({
         </div>
       )}
 
-      <TagPicker kind="tags" label="Tags" multiple selectedIds={tagIds} onChange={setTagIds} />
+      <TagPicker
+        kind="tags"
+        label="Tags"
+        multiple
+        selectedIds={tagIds}
+        onChange={setTagIds}
+        destinationId={destinationId}
+      />
 
-      <TagPicker kind="area" label="Area" multiple selectedIds={areaIds} onChange={setAreaIds} />
+      <TagPicker
+        kind="area"
+        label="Area"
+        multiple
+        selectedIds={areaIds}
+        onChange={setAreaIds}
+        destinationId={destinationId}
+      />
 
       <label className="flex flex-col gap-1 text-sm">
         Address

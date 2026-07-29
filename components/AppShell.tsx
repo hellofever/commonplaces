@@ -146,10 +146,11 @@ function AuthenticatedShell({ children }: { children: React.ReactNode }) {
   const [tagsError, setTagsError] = useState(false);
   const [destinationsError, setDestinationsError] = useState(false);
   const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
-  // Two-stage bootstrap: destinations+tags load first (no destination dependency), then
-  // restaurants load once activeDestinationId is resolved from them -- see the effects
-  // below. initialLoadDone only flips once both stages have completed at least once.
-  const [destinationsAndTagsLoaded, setDestinationsAndTagsLoaded] = useState(false);
+  // Two-stage bootstrap: destinations+types load first (no destination dependency --
+  // type is one taxonomy shared by every destination), then restaurants and the active
+  // destination's own tags/area load once activeDestinationId is resolved -- see the
+  // effects below. initialLoadDone only flips once both stages have completed once.
+  const [destinationsAndTypesLoaded, setDestinationsAndTypesLoaded] = useState(false);
   const [initialLoadDone, setInitialLoadDone] = useState(false);
 
   const destinationParam = searchParams.get("destination");
@@ -161,6 +162,10 @@ function AuthenticatedShell({ children }: { children: React.ReactNode }) {
   // network round trip -- syncRestaurants still runs in the background to refresh it.
   // A ref (not state) since writing it must never itself trigger a render.
   const restaurantCacheRef = useRef<Map<string, Restaurant[]>>(new Map());
+  // Same pattern for the active destination's own Tags/Area lists, now that those are
+  // scoped per destination too -- see syncDestinationTags below.
+  const tagsCacheRef = useRef<Map<string, Tag[]>>(new Map());
+  const areasCacheRef = useRef<Map<string, Tag[]>>(new Map());
   // Lets in-flight async calls (fetch responses, Realtime callbacks) check whether the
   // destination they were fetching for is still the active one by the time they
   // resolve, so a slow response for a destination the user already switched away from
@@ -186,18 +191,45 @@ function AuthenticatedShell({ children }: { children: React.ReactNode }) {
     }
   }
 
-  async function syncTags() {
+  // Type is one taxonomy shared by every destination -- fetched once, no destination
+  // dependency.
+  async function syncTypes() {
     try {
-      const [ty, ta, a] = await Promise.all([fetchTags("type"), fetchTags("tags"), fetchTags("area")]);
+      const ty = await fetchTags("type");
       setTypes(ty);
-      setTags(ta);
-      setAreas(a);
       setTagsError(false);
       setLastSyncedAt(new Date());
     } catch (err) {
       console.error(err);
       setTagsError(true);
     }
+  }
+
+  // Tags/Area are scoped to a single destination -- mirrors syncRestaurants' cache +
+  // staleness-guard pattern so a destination switch never flashes the previous
+  // destination's values while the fresh fetch is in flight.
+  async function syncDestinationTags(destinationId: string | null = activeDestinationId) {
+    if (!destinationId) return;
+    try {
+      const [ta, a] = await Promise.all([fetchTags("tags", destinationId), fetchTags("area", destinationId)]);
+      tagsCacheRef.current.set(destinationId, ta);
+      areasCacheRef.current.set(destinationId, a);
+      if (destinationId === activeDestinationIdRef.current) {
+        setTags(ta);
+        setAreas(a);
+        setTagsError(false);
+      }
+      setLastSyncedAt(new Date());
+    } catch (err) {
+      console.error(err);
+      if (destinationId === activeDestinationIdRef.current) setTagsError(true);
+    }
+  }
+
+  // Combined refresh for consumers that just want "everything tag-related, current
+  // destination" -- Settings' "Sync now", and Realtime tag-change handling below.
+  async function syncTags() {
+    await Promise.all([syncTypes(), syncDestinationTags()]);
   }
 
   async function syncDestinations() {
@@ -254,30 +286,37 @@ function AuthenticatedShell({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    Promise.all([syncDestinations(), syncTags()]).finally(() => setDestinationsAndTagsLoaded(true));
+    Promise.all([syncDestinations(), syncTypes()]).finally(() => setDestinationsAndTypesLoaded(true));
   }, []);
 
   // Canonicalize the URL once destinations are loaded and none was specified, so the
   // active destination is always shareable/reload-safe -- same pattern Header uses for
   // ?q=, just written once here instead of per-navigation.
   useEffect(() => {
-    if (!destinationsAndTagsLoaded || destinationParam || !activeDestinationId) return;
+    if (!destinationsAndTypesLoaded || destinationParam || !activeDestinationId) return;
     const params = new URLSearchParams(searchParams.toString());
     params.set("destination", activeDestinationId);
     router.replace(`${pathname}?${params.toString()}`);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [destinationsAndTagsLoaded, destinationParam, activeDestinationId]);
+  }, [destinationsAndTypesLoaded, destinationParam, activeDestinationId]);
 
   useEffect(() => {
-    if (!destinationsAndTagsLoaded || !activeDestinationId) return;
+    if (!destinationsAndTypesLoaded || !activeDestinationId) return;
     // Render whatever's cached for this destination immediately (empty if we've never
     // fetched it) so a destination switch never shows the previous destination's rows
-    // while the fresh fetch below is in flight -- see restaurantCacheRef above.
+    // while the fresh fetch below is in flight -- see restaurantCacheRef/tagsCacheRef/
+    // areasCacheRef above.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setRestaurants(restaurantCacheRef.current.get(activeDestinationId) ?? []);
-    syncRestaurants(activeDestinationId).finally(() => setInitialLoadDone(true));
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setTags(tagsCacheRef.current.get(activeDestinationId) ?? []);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setAreas(areasCacheRef.current.get(activeDestinationId) ?? []);
+    Promise.all([syncRestaurants(activeDestinationId), syncDestinationTags(activeDestinationId)]).finally(() =>
+      setInitialLoadDone(true)
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [destinationsAndTagsLoaded, activeDestinationId]);
+  }, [destinationsAndTypesLoaded, activeDestinationId]);
 
   useEffect(() => {
     const channel = supabase

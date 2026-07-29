@@ -380,11 +380,11 @@ export function SheetView() {
             .split(",")
             .map((s) => s.trim())
             .filter(Boolean);
-          const existing = await fetchTags(kind);
+          const existing = await fetchTags(kind, restaurant.destination_id);
           const resolved: Tag[] = [];
           for (const name of names) {
             const match = existing.find((t) => t.name.toLowerCase() === name.toLowerCase());
-            resolved.push(match ?? (await createTag(kind, name)));
+            resolved.push(match ?? (await createTag(kind, name, restaurant.destination_id)));
           }
           const otherIds = otherFacetIds(restaurant, kind);
           await updateRestaurantTags(restaurant.id, [...resolved.map((t) => t.id), ...otherIds]);
@@ -941,6 +941,7 @@ export function SheetView() {
               maxSelections={tagEditor.kind === "type" ? 3 : undefined}
               selectedIds={tagEditor.selectedIds}
               onChange={handleTagEditorChange}
+              destinationId={tagEditor.restaurant.destination_id}
             />
           </>
         )}

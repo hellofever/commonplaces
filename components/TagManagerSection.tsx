@@ -30,7 +30,10 @@ import { useRestaurantUI } from "./AppShell";
 
 // One list+add+delete section per taxonomy facet (Type/Tags/Area), used 3x by
 // TagManager. Only `colorable` (Type) rows get the icon/color swatches -- Tags/Area
-// carry neither in the schema (see lib/tags.ts).
+// carry neither in the schema (see lib/tags.ts). Tags/Area are scoped to the currently
+// active destination (options comes from context, already filtered -- see AppShell's
+// syncDestinationTags), so this section manages that destination's list, not a global
+// one; Type stays global and ignores activeDestinationId.
 export function TagManagerSection({
   kind,
   label,
@@ -40,7 +43,7 @@ export function TagManagerSection({
   label: string;
   colorable?: boolean;
 }) {
-  const { types, tags, areas, patchTagCache, removeTagFromCache } = useRestaurantUI();
+  const { types, tags, areas, activeDestinationId, patchTagCache, removeTagFromCache } = useRestaurantUI();
   const options = { type: types, tags, area: areas }[kind];
   const { run, isPending, isError } = useOptimisticSave();
 
@@ -127,7 +130,7 @@ export function TagManagerSection({
     run("create", {
       apply: () => {},
       revert: () => {},
-      write: () => createTag(kind, name, icon, color),
+      write: () => createTag(kind, name, activeDestinationId, icon, color),
       onSuccess: (tag) => {
         patchTagCache(tag);
         resetCreateForm();
