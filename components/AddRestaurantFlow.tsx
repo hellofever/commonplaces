@@ -47,7 +47,7 @@ export function AddRestaurantFlow({
   initialQuery?: string;
   onClose: () => void;
 }) {
-  const { activeDestinationId, removeRestaurantsCache } = useRestaurantUI();
+  const { activeDestinationId, activeDestination, removeRestaurantsCache } = useRestaurantUI();
   // The restaurant's own destination on edit (editing never moves a restaurant between
   // destinations), or whichever one is currently active on add.
   const destinationId = editing ? editing.destination_id : activeDestinationId;
@@ -68,7 +68,11 @@ export function AddRestaurantFlow({
     setLoading(true);
     setDuplicate(null);
     try {
-      const res = await placesFetch("search", { query });
+      const bias =
+        activeDestination?.lat != null && activeDestination?.lng != null
+          ? { lat: activeDestination.lat, lng: activeDestination.lng }
+          : undefined;
+      const res = await placesFetch("search", { query, bias });
       const data = await res.json();
       setResults(data.results ?? []);
       setSearched(true);

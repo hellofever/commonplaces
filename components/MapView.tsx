@@ -3,9 +3,10 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { APIProvider, Map, AdvancedMarker, useMap, useAdvancedMarkerRef } from "@vis.gl/react-google-maps";
 import { MarkerClusterer, type Cluster, type Renderer } from "@googlemaps/markerclusterer";
-import { ArrowsHorizontal, Compass, GpsFix } from "@phosphor-icons/react";
+import { ArrowsHorizontal, Compass, GpsFix, Warning } from "@phosphor-icons/react";
 import { PHOSPHOR_ICON_MAP, tagIcon, tagMapColor } from "@/lib/tags";
 import { useClusteringEnabled } from "@/lib/preferences";
+import { DESTINATION_BIAS_RADIUS_METERS, distanceMeters } from "@/lib/geo";
 import { useRestaurantUI } from "./AppShell";
 import { MapControlsDrawer } from "./MapControlsDrawer";
 import { MapBottomCard } from "./MapBottomCard";
@@ -612,10 +613,16 @@ function DeactivateLocateOnDrag({ active, onInteract }: { active: boolean; onInt
 // (leaving the Map tab) for what resets them.
 function LocateMeButton({
   active,
+  disabled,
+  destination,
   onLocated,
+  onOutOfArea,
 }: {
   active: boolean;
+  disabled: boolean;
+  destination: Destination | null;
   onLocated: (position: { lat: number; lng: number }) => void;
+  onOutOfArea: () => void;
 }) {
   const map = useMap();
   const [locating, setLocating] = useState(false);
@@ -626,9 +633,20 @@ function LocateMeButton({
     navigator.geolocation.getCurrentPosition(
       (position) => {
         const point = { lat: position.coords.latitude, lng: position.coords.longitude };
+        setLocating(false);
+        // Same radius the Places search route biases toward (see lib/geo.ts) -- if the
+        // user's actual position isn't even within that zone, centering the map there
+        // would just pan away from the whole destination, so bail out instead.
+        if (
+          destination?.lat != null &&
+          destination?.lng != null &&
+          distanceMeters(point, { lat: destination.lat, lng: destination.lng }) > DESTINATION_BIAS_RADIUS_METERS
+        ) {
+          onOutOfArea();
+          return;
+        }
         if (map) animateCameraTo(map, { ...point, zoom: active ? FOCUS_ZOOM : map.getZoom() ?? FOCUS_ZOOM });
         onLocated(point);
-        setLocating(false);
       },
       () => setLocating(false),
       { enableHighAccuracy: true, timeout: 10_000 }
@@ -638,7 +656,7 @@ function LocateMeButton({
   return (
     <button
       onClick={handleClick}
-      disabled={locating}
+      disabled={locating || disabled}
       aria-label="Center on my location"
       className={`flex h-12 w-12 items-center justify-center rounded-full shadow backdrop-blur disabled:opacity-60 ${
         active
@@ -729,11 +747,17 @@ export function MapView({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [locateActive, setLocateActive] = useState(false);
+  const [locateOutOfArea, setLocateOutOfArea] = useState(false);
+  const [locateMessage, setLocateMessage] = useState<string | null>(null);
   const handleLocated = useCallback((position: { lat: number; lng: number }) => {
     setUserLocation(position);
     setLocateActive(true);
   }, []);
   const handleLocateInteract = useCallback(() => setLocateActive(false), []);
+  const handleLocateOutOfArea = useCallback(() => {
+    setLocateOutOfArea(true);
+    setLocateMessage("You are located outside this destination");
+  }, []);
 
   // Navigating away from the Map tab turns the active state off -- the "you are here"
   // dot stays put (see UserLocationMarker), it just stops pulsing and the button icon
@@ -741,6 +765,20 @@ export function MapView({
   useEffect(() => {
     if (!isActive) setLocateActive(false);
   }, [isActive]);
+
+  // The disabled "you're outside this destination" state is per-destination, not
+  // permanent -- switching destinations (a plausible fix for the user's actual
+  // location) re-enables the button so it gets a fresh check next click.
+  useEffect(() => {
+    setLocateOutOfArea(false);
+    setLocateMessage(null);
+  }, [activeDestination?.id]);
+
+  useEffect(() => {
+    if (!locateMessage) return;
+    const timeout = setTimeout(() => setLocateMessage(null), 4000);
+    return () => clearTimeout(timeout);
+  }, [locateMessage]);
 
   const focusedRestaurant = focusPlaceId
     ? (restaurants.find((r) => r.id === focusPlaceId) ?? null)
@@ -862,9 +900,23 @@ export function MapView({
           />
 
           {/* Desktop: independent corner buttons + centered card, unchanged. */}
-          <div className="absolute bottom-4 right-4 z-20 hidden flex-col gap-3 md:flex">
+          <div className="absolute bottom-4 right-4 z-20 hidden flex-col items-end gap-3 md:flex">
             <ResetViewButton restaurants={geoTagged} destination={activeDestination} />
-            <LocateMeButton active={locateActive} onLocated={handleLocated} />
+            <div className="flex items-center gap-2">
+              {locateMessage && (
+                <div className="flex items-center gap-2 rounded-full bg-white/95 px-3 py-2 text-sm text-black/70 shadow dark:bg-black/85 dark:text-white/70">
+                  <Warning size={16} weight="fill" className="flex-none text-amber-500" />
+                  {locateMessage}
+                </div>
+              )}
+              <LocateMeButton
+                active={locateActive}
+                disabled={locateOutOfArea}
+                destination={activeDestination}
+                onLocated={handleLocated}
+                onOutOfArea={handleLocateOutOfArea}
+              />
+            </div>
           </div>
           <div className="hidden md:block">
             <MapBottomCard
@@ -881,7 +933,21 @@ export function MapView({
               className={`flex flex-col items-end gap-3 pr-4 ${selectedRestaurant ? "" : "pb-4"}`}
             >
               <ResetViewButton restaurants={geoTagged} destination={activeDestination} />
-              <LocateMeButton active={locateActive} onLocated={handleLocated} />
+              <div className="flex items-center gap-2">
+                {locateMessage && (
+                  <div className="flex items-center gap-2 rounded-full bg-white/95 px-3 py-2 text-sm text-black/70 shadow dark:bg-black/85 dark:text-white/70">
+                    <Warning size={16} weight="fill" className="flex-none text-amber-500" />
+                    {locateMessage}
+                  </div>
+                )}
+                <LocateMeButton
+                  active={locateActive}
+                  disabled={locateOutOfArea}
+                  destination={activeDestination}
+                  onLocated={handleLocated}
+                  onOutOfArea={handleLocateOutOfArea}
+                />
+              </div>
             </div>
             <MapBottomCard
               restaurant={selectedRestaurant}

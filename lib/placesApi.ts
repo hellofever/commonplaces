@@ -4,7 +4,7 @@ import { supabase } from "./supabase";
 // so every request must carry the Supabase session token.
 export async function placesFetch(
   path: "search" | "details",
-  body: { query: string } | { placeId: string }
+  body: { query: string; bias?: { lat: number; lng: number } } | { placeId: string }
 ): Promise<Response> {
   const { data } = await supabase.auth.getSession();
   const token = data.session?.access_token;

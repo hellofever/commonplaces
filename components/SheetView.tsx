@@ -133,6 +133,7 @@ export function SheetView() {
     openEdit,
     openAddInline,
     restaurants,
+    activeDestination,
     removeRestaurantsCache,
     patchRestaurantCache,
     syncRestaurants,
@@ -358,7 +359,11 @@ export function SheetView() {
             break;
           }
           await patchRestaurant(restaurant.id, { address: value });
-          const geo = await geocodeAddress(value);
+          const bias =
+            activeDestination?.lat != null && activeDestination?.lng != null
+              ? { lat: activeDestination.lat, lng: activeDestination.lng }
+              : undefined;
+          const geo = await geocodeAddress(value, bias);
           if (geo) {
             await patchRestaurant(restaurant.id, { lat: geo.lat, lng: geo.lng });
             setNeedsReview((s) => {

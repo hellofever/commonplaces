@@ -1,4 +1,5 @@
 import { requireUser } from "../requireUser";
+import { DESTINATION_BIAS_RADIUS_METERS } from "@/lib/geo";
 
 export const dynamic = "force-dynamic";
 
@@ -17,14 +18,23 @@ export async function POST(request: Request) {
   if (unauthorized) return unauthorized;
 
   let query: unknown;
+  let bias: unknown;
   try {
-    ({ query } = await request.json());
+    ({ query, bias } = await request.json());
   } catch {
     return Response.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
   if (!query || typeof query !== "string" || query.length > MAX_QUERY_LENGTH) {
     return Response.json({ error: "Missing or invalid query" }, { status: 400 });
+  }
+
+  let locationBias: { circle: { center: { latitude: number; longitude: number }; radius: number } } | undefined;
+  if (bias && typeof bias === "object") {
+    const { lat, lng } = bias as { lat?: unknown; lng?: unknown };
+    if (typeof lat === "number" && typeof lng === "number") {
+      locationBias = { circle: { center: { latitude: lat, longitude: lng }, radius: DESTINATION_BIAS_RADIUS_METERS } };
+    }
   }
 
   const apiKey = process.env.GOOGLE_PLACES_API_KEY;
@@ -40,7 +50,7 @@ export async function POST(request: Request) {
       "X-Goog-FieldMask":
         "places.id,places.displayName,places.formattedAddress,places.location,places.primaryType",
     },
-    body: JSON.stringify({ textQuery: query }),
+    body: JSON.stringify({ textQuery: query, ...(locationBias ? { locationBias } : {}) }),
     cache: "no-store",
   });
 

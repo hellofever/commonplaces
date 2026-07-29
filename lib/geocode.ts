@@ -10,10 +10,13 @@ export interface GeocodeResult {
 // well, and this way there's no new API to enable/key-restrict. Returns null when
 // there's no confident top match, so the caller can keep the previous coordinates and
 // flag the row for manual review instead of silently mis-pinning it.
-export async function geocodeAddress(query: string): Promise<GeocodeResult | null> {
+export async function geocodeAddress(
+  query: string,
+  bias?: { lat: number; lng: number }
+): Promise<GeocodeResult | null> {
   if (!query.trim()) return null;
 
-  const res = await placesFetch("search", { query });
+  const res = await placesFetch("search", { query, bias });
   if (!res.ok) return null;
 
   const data = await res.json();
