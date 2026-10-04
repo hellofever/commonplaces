@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { CaretDown, Check } from "@phosphor-icons/react";
+import { CaretDown, Check, MapPin } from "@phosphor-icons/react";
 import { Dropdown } from "./Dropdown";
 import { BottomSheet, ModalHeader } from "./BottomSheet";
 import { PlaceSearchPicker, type PlacePickResult } from "./PlaceSearchPicker";
@@ -14,7 +14,16 @@ import { createDestination, type Destination } from "@/lib/destinations";
 // restaurants scoped to it), no page reload. `beforeOpenCreate` lets the mobile menu
 // close itself first (same pattern as its "Add Place"/"Settings" buttons) so the
 // New Destination sheet never opens stacked on top of the still-open menu sheet.
-export function DestinationSwitcher({ beforeOpenCreate }: { beforeOpenCreate?: () => void }) {
+export function DestinationSwitcher({
+  beforeOpenCreate,
+  variant = "icon",
+}: {
+  beforeOpenCreate?: () => void;
+  // "icon" is the compact desktop-nav trigger; "row" is a full-width row styled like
+  // the mobile menu's other action rows (see Header's "Settings" button) -- it also
+  // needs a wider panel since it no longer sits as a small button off to one side.
+  variant?: "icon" | "row";
+}) {
   const { destinations, activeDestinationId, patchDestinationCache } = useRestaurantUI();
   const router = useRouter();
   const pathname = usePathname();
@@ -35,15 +44,27 @@ export function DestinationSwitcher({ beforeOpenCreate }: { beforeOpenCreate?: (
           the Dropdown closed, instead of needing an imperative close API from it. */}
       <Dropdown
         key={activeDestinationId ?? "none"}
-        trigger={({ toggle }) => (
-          <button
-            onClick={toggle}
-            aria-label={active?.name ?? "Destination"}
-            className="flex h-9 w-9 items-center justify-center rounded-lg border border-black/10 text-black/60 dark:border-white/10 dark:text-white/60"
-          >
-            <CaretDown size={14} weight="bold" />
-          </button>
-        )}
+        panelClassName={variant === "row" ? "w-full" : "w-56"}
+        trigger={({ toggle }) =>
+          variant === "row" ? (
+            <button
+              onClick={toggle}
+              className="flex w-full items-center gap-2 rounded-md px-3 py-2.5 text-left text-black/60 hover:bg-black/[.03] dark:text-white/60 dark:hover:bg-white/[.05]"
+            >
+              <MapPin size={16} />
+              <span className="flex-1 truncate">{active?.name ?? "Destination"}</span>
+              <CaretDown size={14} weight="bold" className="shrink-0 opacity-60" />
+            </button>
+          ) : (
+            <button
+              onClick={toggle}
+              aria-label={active?.name ?? "Destination"}
+              className="flex h-9 w-9 items-center justify-center rounded-lg border border-black/10 text-black/60 dark:border-white/10 dark:text-white/60"
+            >
+              <CaretDown size={14} weight="bold" />
+            </button>
+          )
+        }
       >
         <div className="flex flex-col gap-1">
           {destinations.map((d) => {

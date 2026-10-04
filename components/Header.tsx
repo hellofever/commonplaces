@@ -140,12 +140,7 @@ export function Header({ onAdd }: { onAdd: () => void }) {
         heightClassName="h-dvh! md:h-fit!"
       >
         <ModalHeader
-          title={
-            <div className="flex items-center gap-3">
-              <Logo className="h-[13px] w-auto" />
-              <DestinationSwitcher beforeOpenCreate={() => setMenuOpen(false)} />
-            </div>
-          }
+          title={<Logo className="h-[13px] w-auto" />}
           onClose={() => setMenuOpen(false)}
           className="pt-[env(safe-area-inset-top)] md:pt-0"
         />
@@ -169,17 +164,18 @@ export function Header({ onAdd }: { onAdd: () => void }) {
             );
           })}
         </nav>
-        <div className="mt-2 flex flex-col gap-1 border-t border-black/10 pt-2 text-sm dark:border-white/10">
+        <div className="mt-6 flex flex-col gap-1 text-sm">
           <button
             onClick={() => {
               setMenuOpen(false);
               onAdd();
             }}
-            className="flex items-center justify-center gap-1.5 rounded-full bg-red-500 px-4 py-3 font-heading text-sm uppercase text-white"
+            className="mb-2 flex items-center justify-center gap-1.5 rounded-full bg-red-500 px-4 py-3 font-heading text-sm uppercase text-white"
           >
             <Plus weight="bold" size={16} />
             Add Place
           </button>
+          <DestinationSwitcher variant="row" beforeOpenCreate={() => setMenuOpen(false)} />
           <button
             onClick={() => {
               setMenuOpen(false);
