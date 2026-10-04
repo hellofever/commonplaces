@@ -3,6 +3,7 @@
 import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type { Session } from "@supabase/supabase-js";
+import { CircleNotch } from "@phosphor-icons/react";
 import { supabase } from "@/lib/supabase";
 import { fetchRestaurants } from "@/lib/restaurants";
 import { fetchTags, type Tag, type TagKind } from "@/lib/tags";
@@ -49,6 +50,12 @@ interface RestaurantUIContextValue {
   activeDestinationId: string | null;
   activeDestination: Destination | null;
   destinationsError: boolean;
+  // True from the moment DestinationPicker commits to a different id until that
+  // destination's restaurants/tags finish loading (see the effect below) -- drives the
+  // full-screen loading overlay so a switch never shows a flash of the previous
+  // destination's pins/empty state while the new one's fetch is in flight.
+  destinationSwitching: boolean;
+  beginDestinationSwitch: () => void;
 
   // Force a full refetch of a domain -- used by Settings' "Sync now" button and by
   // Realtime event handlers. Falls back to serving stale cached data on failure.
@@ -88,6 +95,18 @@ function Loading() {
   return (
     <div className="flex flex-1 items-center justify-center text-sm text-black/50 dark:text-white/50">
       Loading…
+    </div>
+  );
+}
+
+// z-[60]: above every BottomSheet (z-50, see BottomSheet.tsx) so it covers a
+// still-closing sheet's transition instead of racing it.
+function DestinationSwitchOverlay() {
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-white/60 dark:bg-black/60">
+      <div className="flex h-20 w-20 items-center justify-center rounded-2xl bg-white shadow-lg dark:bg-zinc-900">
+        <CircleNotch size={28} weight="bold" className="animate-spin text-black/50 dark:text-white/50" />
+      </div>
     </div>
   );
 }
@@ -153,6 +172,7 @@ function AuthenticatedShell({ children }: { children: React.ReactNode }) {
   // effects below. initialLoadDone only flips once both stages have completed once.
   const [destinationsAndTypesLoaded, setDestinationsAndTypesLoaded] = useState(false);
   const [initialLoadDone, setInitialLoadDone] = useState(false);
+  const [destinationSwitching, setDestinationSwitching] = useState(false);
 
   const destinationParam = searchParams.get("destination");
   // Falls back to the last destination this device was on (see the persist effect
@@ -302,6 +322,10 @@ function AuthenticatedShell({ children }: { children: React.ReactNode }) {
     setDestinations((prev) => prev.filter((d) => d.id !== id));
   }
 
+  function beginDestinationSwitch() {
+    setDestinationSwitching(true);
+  }
+
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     Promise.all([syncDestinations(), syncTypes()]).finally(() => setDestinationsAndTypesLoaded(true));
@@ -330,9 +354,10 @@ function AuthenticatedShell({ children }: { children: React.ReactNode }) {
     setTags(tagsCacheRef.current.get(activeDestinationId) ?? []);
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setAreas(areasCacheRef.current.get(activeDestinationId) ?? []);
-    Promise.all([syncRestaurants(activeDestinationId), syncDestinationTags(activeDestinationId)]).finally(() =>
-      setInitialLoadDone(true)
-    );
+    Promise.all([syncRestaurants(activeDestinationId), syncDestinationTags(activeDestinationId)]).finally(() => {
+      setInitialLoadDone(true);
+      setDestinationSwitching(false);
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [destinationsAndTypesLoaded, activeDestinationId]);
 
@@ -380,6 +405,8 @@ function AuthenticatedShell({ children }: { children: React.ReactNode }) {
         activeDestinationId,
         activeDestination,
         destinationsError,
+        destinationSwitching,
+        beginDestinationSwitch,
         syncNow,
         syncRestaurants,
         syncTags,
@@ -429,6 +456,8 @@ function AuthenticatedShell({ children }: { children: React.ReactNode }) {
           />
         )}
       </BottomSheet>
+
+      {destinationSwitching && <DestinationSwitchOverlay />}
     </RestaurantUIContext.Provider>
   );
 }

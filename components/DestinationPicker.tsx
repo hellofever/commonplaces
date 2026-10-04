@@ -16,13 +16,16 @@ import { createDestination, type Destination } from "@/lib/destinations";
 // one consistent "tap a destination, see it on the map" action regardless of where you
 // started from.
 export function DestinationPicker({ onSelect }: { onSelect?: () => void }) {
-  const { destinations, activeDestinationId, patchDestinationCache } = useRestaurantUI();
+  const { destinations, activeDestinationId, patchDestinationCache, beginDestinationSwitch } = useRestaurantUI();
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [creating, setCreating] = useState(false);
 
   function goTo(id: string) {
+    // Only when it's an actual change -- picking the already-active destination
+    // doesn't re-trigger AppShell's fetch effect, so the overlay would never clear.
+    if (id !== activeDestinationId) beginDestinationSwitch();
     const params = new URLSearchParams(searchParams.toString());
     params.set("destination", id);
     params.delete("view");
