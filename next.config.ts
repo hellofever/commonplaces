@@ -1,6 +1,12 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // Next 16's dev server 403s any request carrying an Origin header not on this list
+  // (only localhost is allowed by default) -- without it, loading the dev server from
+  // a phone on the LAN gets a blank page: the initial HTML returns fine, but every JS
+  // chunk the page then fetches to hydrate gets silently blocked. Dev-only, has no
+  // effect on `next build`/production.
+  allowedDevOrigins: ["192.168.1.115"],
   env: {
     // Vercel injects VERCEL_GIT_COMMIT_SHA (unprefixed) into the build environment on
     // every deploy regardless of the dashboard's "Automatically expose System
