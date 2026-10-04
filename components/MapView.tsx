@@ -3,7 +3,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { APIProvider, Map, AdvancedMarker, useMap, useAdvancedMarkerRef } from "@vis.gl/react-google-maps";
 import { MarkerClusterer, type Cluster, type Renderer } from "@googlemaps/markerclusterer";
-import { ArrowsHorizontal, Compass, GpsFix, Warning } from "@phosphor-icons/react";
+import { Compass, Funnel, GpsFix, Warning } from "@phosphor-icons/react";
 import { PHOSPHOR_ICON_MAP, tagIcon, tagMapColor } from "@/lib/tags";
 import { useClusteringEnabled } from "@/lib/preferences";
 import { DESTINATION_BIAS_RADIUS_METERS, distanceMeters } from "@/lib/geo";
@@ -350,29 +350,41 @@ function ClusteredMarkers({
   );
 }
 
-// Stays anchored over the map itself (not the drawer) so its position doesn't drift
-// when the drawer occupies the space beside it on desktop.
+// Rendered twice by MapView -- once pinned to its own top-left corner for desktop, once
+// sized/styled to match LocateMeButton/ResetViewButton inside mobile's bottom button row
+// -- rather than one responsive element, since the icon size itself (not just position)
+// differs between the two and Phosphor's `size` prop can't respond to a media query.
 function MapExpandButton({
   open,
   onToggle,
-  centerRef,
+  hasActiveFilters,
+  size = 18,
+  wrapperClassName = "",
+  buttonClassName = "",
 }: {
   open: boolean;
   onToggle: () => void;
-  centerRef: React.MutableRefObject<google.maps.LatLng | null>;
+  hasActiveFilters: boolean;
+  size?: number;
+  wrapperClassName?: string;
+  buttonClassName?: string;
 }) {
-  const map = useMap();
   return (
-    <button
-      onClick={() => {
-        centerRef.current = map?.getCenter() ?? null;
-        onToggle();
-      }}
-      aria-label={open ? "Close map controls" : "Open map controls"}
-      className="absolute left-4 top-4 z-10 flex h-9 w-9 items-center justify-center rounded-full bg-white/90 text-black/70 shadow backdrop-blur dark:bg-black/80 dark:text-white/70"
-    >
-      <ArrowsHorizontal size={18} weight="bold" />
-    </button>
+    <span className={`relative ${wrapperClassName}`}>
+      <button
+        onClick={onToggle}
+        aria-label={open ? "Close map controls" : "Open map controls"}
+        className={`flex items-center justify-center rounded-full bg-white/90 text-black/70 shadow backdrop-blur dark:bg-black/80 dark:text-white/70 ${buttonClassName}`}
+      >
+        <Funnel size={size} weight="bold" />
+      </button>
+      {hasActiveFilters && (
+        <span
+          aria-hidden
+          className="pointer-events-none absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-pink-600 ring-2 ring-white dark:ring-black"
+        />
+      )}
+    </span>
   );
 }
 
@@ -741,7 +753,6 @@ export function MapView({
   const { restaurants, restaurantsError, syncRestaurants, activeDestination } = useRestaurantUI();
   const [clusteringEnabled] = useClusteringEnabled();
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const centerBeforeResize = useRef<google.maps.LatLng | null>(null);
   const desktopCardRef = useRef<HTMLDivElement | null>(null);
   const mobileCardRef = useRef<HTMLDivElement | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -831,107 +842,118 @@ export function MapView({
 
   return (
     <APIProvider apiKey={apiKey}>
-      <div className="relative flex flex-1 flex-col md:flex-row">
-        {/* isolate: Google's Maps JS SDK renders its own internal panes/overlays (tile
-            layers, gesture-capture regions, marker panes) as descendants of this div with
-            z-index values it assigns itself, sometimes absurdly high -- without a stacking
-            context boundary here, one of those can end up painted (and, on touch devices,
-            hit-tested) above sticky page chrome like Header's search bar, even though it's
-            visually "just the map." isolate caps every z-index inside this subtree so
-            nothing Google renders can ever escape above a sibling like Header. */}
-        <div className="relative isolate min-h-0 min-w-0 flex-1 md:order-2">
-          {restaurantsError && (
-            <div className="absolute inset-x-0 top-4 z-10 mx-auto flex w-fit items-center gap-3 rounded-full bg-white/95 px-4 py-2 text-sm text-black/70 shadow dark:bg-black/85 dark:text-white/70">
-              Couldn’t load places.
-              <button onClick={() => syncRestaurants()} className="font-medium underline">
-                Retry
-              </button>
-            </div>
-          )}
-          {/* touch-none: replaces the old page-wide viewport zoom-disable (see
-              app/layout.tsx) -- scoped here instead of globally, so only this element
-              tells the browser not to run its own pinch/double-tap zoom, leaving
-              gestureHandling="greedy" below as the sole owner of touch gestures over the
-              map without a page-level viewport vs. visual-viewport fight elsewhere. */}
-          <Map
-            className="h-full w-full touch-none"
-            defaultCenter={
-              activeDestination?.lat != null && activeDestination?.lng != null
-                ? { lat: activeDestination.lat, lng: activeDestination.lng }
-                : FALLBACK_CENTER
-            }
-            defaultZoom={DESTINATION_ZOOM}
-            mapId={process.env.NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID || "7a03f40461f9aed667a8cf4f"}
-            gestureHandling="greedy"
-            clickableIcons={false}
-            mapTypeControl={false}
-            fullscreenControl={false}
-            streetViewControl={false}
-            rotateControl={false}
-            zoomControl={false}
-            cameraControl={false}
-            onClick={() => setSelectedId(null)}
-          >
-            <RestoreCameraOnShow active={isActive} />
-            <DeactivateLocateOnDrag active={locateActive} onInteract={handleLocateInteract} />
-            <FitToFilter active={filtersActive} restaurants={geoTagged} />
-            <FitToAllOnLoad restaurants={geoTagged} skip={filtersActive || Boolean(focusPlaceId)} />
-            {activeDestination && <RecenterOnDestinationChange destination={activeDestination} />}
-            <PanToSelectedRestaurant
-              restaurant={selectedRestaurant}
-              desktopCardRef={desktopCardRef}
-              mobileCardRef={mobileCardRef}
-            />
-            <ClusteredMarkers
-              // Forces a clean remount on toggle (see ClusteredMarkers' `enabled` prop
-              // comment) instead of trying to un-hide already-clustered markers by hand.
-              key={clusteringEnabled ? "clustered" : "unclustered"}
-              restaurants={geoTagged}
-              selectedId={selectedId}
-              onSelect={handleSelectMarker}
-              enabled={clusteringEnabled}
-            />
-            {userLocation && <UserLocationMarker position={userLocation} active={locateActive} />}
-          </Map>
-          <MapExpandButton
-            open={drawerOpen}
-            onToggle={() => setDrawerOpen((o) => !o)}
-            centerRef={centerBeforeResize}
+      {/* isolate: Google's Maps JS SDK renders its own internal panes/overlays (tile
+          layers, gesture-capture regions, marker panes) as descendants of this div with
+          z-index values it assigns itself, sometimes absurdly high -- without a stacking
+          context boundary here, one of those can end up painted (and, on touch devices,
+          hit-tested) above sticky page chrome like Header's search bar, even though it's
+          visually "just the map." isolate caps every z-index inside this subtree so
+          nothing Google renders can ever escape above a sibling like Header. */}
+      <div className="relative isolate min-h-0 flex-1">
+        {restaurantsError && (
+          <div className="absolute inset-x-0 top-4 z-10 mx-auto flex w-fit items-center gap-3 rounded-full bg-white/95 px-4 py-2 text-sm text-black/70 shadow dark:bg-black/85 dark:text-white/70">
+            Couldn’t load places.
+            <button onClick={() => syncRestaurants()} className="font-medium underline">
+              Retry
+            </button>
+          </div>
+        )}
+        {/* touch-none: replaces the old page-wide viewport zoom-disable (see
+            app/layout.tsx) -- scoped here instead of globally, so only this element
+            tells the browser not to run its own pinch/double-tap zoom, leaving
+            gestureHandling="greedy" below as the sole owner of touch gestures over the
+            map without a page-level viewport vs. visual-viewport fight elsewhere. */}
+        <Map
+          className="h-full w-full touch-none"
+          defaultCenter={
+            activeDestination?.lat != null && activeDestination?.lng != null
+              ? { lat: activeDestination.lat, lng: activeDestination.lng }
+              : FALLBACK_CENTER
+          }
+          defaultZoom={DESTINATION_ZOOM}
+          mapId={process.env.NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID || "7a03f40461f9aed667a8cf4f"}
+          gestureHandling="greedy"
+          clickableIcons={false}
+          mapTypeControl={false}
+          fullscreenControl={false}
+          streetViewControl={false}
+          rotateControl={false}
+          zoomControl={false}
+          cameraControl={false}
+          onClick={() => setSelectedId(null)}
+        >
+          <RestoreCameraOnShow active={isActive} />
+          <DeactivateLocateOnDrag active={locateActive} onInteract={handleLocateInteract} />
+          <FitToFilter active={filtersActive} restaurants={geoTagged} />
+          <FitToAllOnLoad restaurants={geoTagged} skip={filtersActive || Boolean(focusPlaceId)} />
+          {activeDestination && <RecenterOnDestinationChange destination={activeDestination} />}
+          <PanToSelectedRestaurant
+            restaurant={selectedRestaurant}
+            desktopCardRef={desktopCardRef}
+            mobileCardRef={mobileCardRef}
           />
+          <ClusteredMarkers
+            // Forces a clean remount on toggle (see ClusteredMarkers' `enabled` prop
+            // comment) instead of trying to un-hide already-clustered markers by hand.
+            key={clusteringEnabled ? "clustered" : "unclustered"}
+            restaurants={geoTagged}
+            selectedId={selectedId}
+            onSelect={handleSelectMarker}
+            enabled={clusteringEnabled}
+          />
+          {userLocation && <UserLocationMarker position={userLocation} active={locateActive} />}
+        </Map>
+        <MapExpandButton
+          open={drawerOpen}
+          onToggle={() => setDrawerOpen((o) => !o)}
+          hasActiveFilters={filtersActive}
+          size={18}
+          wrapperClassName="absolute left-4 top-4 z-20 hidden md:inline-flex"
+          buttonClassName="h-9 w-9"
+        />
 
-          {/* Desktop: independent corner buttons + centered card, unchanged. */}
-          <div className="absolute bottom-4 right-4 z-20 hidden flex-col items-end gap-3 md:flex">
-            <ResetViewButton restaurants={geoTagged} destination={activeDestination} />
-            <div className="flex items-center gap-2">
-              {locateMessage && (
-                <div className="flex items-center gap-2 rounded-full bg-white/95 px-3 py-2 text-sm text-black/70 shadow dark:bg-black/85 dark:text-white/70">
-                  <Warning size={16} weight="fill" className="flex-none text-amber-500" />
-                  {locateMessage}
-                </div>
-              )}
-              <LocateMeButton
-                active={locateActive}
-                disabled={locateOutOfArea}
-                destination={activeDestination}
-                onLocated={handleLocated}
-                onOutOfArea={handleLocateOutOfArea}
-              />
-            </div>
-          </div>
-          <div className="hidden md:block">
-            <MapBottomCard
-              restaurant={selectedRestaurant}
-              onClose={() => setSelectedId(null)}
-              overlayRef={desktopCardRef}
+        {/* Desktop: independent corner buttons + centered card, unchanged. */}
+        <div className="absolute bottom-4 right-4 z-20 hidden flex-col items-end gap-3 md:flex">
+          <ResetViewButton restaurants={geoTagged} destination={activeDestination} />
+          <div className="flex items-center gap-2">
+            {locateMessage && (
+              <div className="flex items-center gap-2 rounded-full bg-white/95 px-3 py-2 text-sm text-black/70 shadow dark:bg-black/85 dark:text-white/70">
+                <Warning size={16} weight="fill" className="flex-none text-amber-500" />
+                {locateMessage}
+              </div>
+            )}
+            <LocateMeButton
+              active={locateActive}
+              disabled={locateOutOfArea}
+              destination={activeDestination}
+              onLocated={handleLocated}
+              onOutOfArea={handleLocateOutOfArea}
             />
           </div>
+        </div>
+        <div className="hidden md:block">
+          <MapBottomCard
+            restaurant={selectedRestaurant}
+            onClose={() => setSelectedId(null)}
+            overlayRef={desktopCardRef}
+          />
+        </div>
 
-          {/* Mobile: one bottom-anchored flex column so the full-width card sliding in
-              pushes the buttons up above it. */}
-          <div className="absolute inset-x-0 bottom-0 z-20 flex flex-col gap-3 md:hidden">
-            <div
-              className={`flex flex-col items-end gap-3 pr-4 ${selectedRestaurant ? "" : "pb-4"}`}
-            >
+        {/* Mobile: one bottom-anchored flex column so the full-width card sliding in
+            pushes the buttons up above it. */}
+        <div className="absolute inset-x-0 bottom-0 z-20 flex flex-col gap-3 md:hidden">
+          <div
+            className={`flex items-end justify-between gap-3 px-4 ${selectedRestaurant ? "" : "pb-4"}`}
+          >
+            <MapExpandButton
+              open={drawerOpen}
+              onToggle={() => setDrawerOpen((o) => !o)}
+              hasActiveFilters={filtersActive}
+              size={22}
+              wrapperClassName="inline-flex"
+              buttonClassName="h-12 w-12"
+            />
+            <div className="flex flex-col items-end gap-3">
               <ResetViewButton restaurants={geoTagged} destination={activeDestination} />
               <div className="flex items-center gap-2">
                 {locateMessage && (
@@ -949,15 +971,15 @@ export function MapView({
                 />
               </div>
             </div>
-            <MapBottomCard
-              restaurant={selectedRestaurant}
-              onClose={() => setSelectedId(null)}
-              variant="sheet"
-              overlayRef={mobileCardRef}
-            />
           </div>
+          <MapBottomCard
+            restaurant={selectedRestaurant}
+            onClose={() => setSelectedId(null)}
+            variant="sheet"
+            overlayRef={mobileCardRef}
+          />
         </div>
-        <MapControlsDrawer open={drawerOpen} centerRef={centerBeforeResize} />
+        <MapControlsDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} />
       </div>
     </APIProvider>
   );
