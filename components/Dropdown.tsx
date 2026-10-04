@@ -24,6 +24,7 @@ export function Dropdown({
 }) {
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -36,6 +37,16 @@ export function Dropdown({
     return () => document.removeEventListener("click", handleClick);
   }, [open]);
 
+  // The trigger can sit anywhere inside a scrolling ancestor (e.g. the mobile menu's
+  // BottomSheet) -- if it's near the bottom, the panel would otherwise render past that
+  // ancestor's scroll bounds, which clips it out of both view and tap range on iOS
+  // Safari (visually looks "open" but every row past the clip line is untappable).
+  // scrollIntoView asks every scrollable ancestor to bring the panel fully into view.
+  useEffect(() => {
+    if (!open) return;
+    panelRef.current?.scrollIntoView({ block: "nearest" });
+  }, [open]);
+
   const toggle = () => setOpen((o) => !o);
 
   return (
@@ -43,7 +54,8 @@ export function Dropdown({
       {trigger({ open, toggle })}
       {open && (
         <div
-          className={`absolute top-full z-20 mt-1 rounded-lg border border-black/10 bg-white p-3 shadow-lg dark:border-white/10 dark:bg-zinc-900 ${
+          ref={panelRef}
+          className={`absolute top-full z-20 mt-1 max-h-[70vh] overflow-y-auto rounded-lg border border-black/10 bg-white p-3 shadow-lg dark:border-white/10 dark:bg-zinc-900 ${
             align === "right" ? "right-0" : "left-0"
           } ${panelClassName}`}
         >
