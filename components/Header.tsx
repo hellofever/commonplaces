@@ -18,6 +18,25 @@ const TABS: { view: ViewName; label: string }[] = [
   { view: "sheet", label: "Sheet" },
 ];
 
+// Baked in at build time via next.config.ts's `env` (see the comment there for why
+// that, not a .env file) -- NEXT_PUBLIC_BUILD_TIME is the build's own clock, which on
+// Vercel starts within seconds of the push that triggered it, so it reads as "time of
+// the push" for the purpose of eyeballing which deploy you're looking at.
+const BUILD_SHA = process.env.NEXT_PUBLIC_BUILD_SHA ?? "local";
+const BUILD_TIME = process.env.NEXT_PUBLIC_BUILD_TIME ?? "";
+
+function timeAgo(iso: string): string {
+  const ms = Date.now() - new Date(iso).getTime();
+  if (!Number.isFinite(ms)) return "";
+  const minutes = Math.floor(ms / 60_000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
+
 export function Header({ onAdd }: { onAdd: () => void }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -186,6 +205,9 @@ export function Header({ onAdd }: { onAdd: () => void }) {
             <Gear size={16} />
             Settings
           </button>
+        </div>
+        <div className="mt-6 border-t border-black/10 pt-3 text-xs text-black/40 dark:border-white/10 dark:text-white/40">
+          Build {BUILD_SHA.slice(0, 7)} · {BUILD_TIME ? timeAgo(BUILD_TIME) : "unknown"}
         </div>
       </BottomSheet>
 
