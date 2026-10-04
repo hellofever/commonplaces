@@ -2,108 +2,70 @@
 
 import { useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { CaretDown, Check, MapPin } from "@phosphor-icons/react";
-import { Dropdown } from "./Dropdown";
+import { Check } from "@phosphor-icons/react";
 import { BottomSheet, ModalHeader } from "./BottomSheet";
 import { PlaceSearchPicker, type PlacePickResult } from "./PlaceSearchPicker";
 import { useRestaurantUI } from "./AppShell";
 import { createDestination, type Destination } from "@/lib/destinations";
 
-// The dropdown next to "Commonplaces" that scopes the whole app to one destination --
-// switching just points ?destination= at a different id (AppShell's context refetches
-// restaurants scoped to it), no page reload. `beforeOpenCreate` lets the mobile menu
-// close itself first (same pattern as its "Add Place"/"Settings" buttons) so the
-// New Destination sheet never opens stacked on top of the still-open menu sheet.
-export function DestinationSwitcher({
-  beforeOpenCreate,
-  variant = "icon",
-}: {
-  beforeOpenCreate?: () => void;
-  // "icon" is the compact desktop-nav trigger; "row" is a full-width row styled like
-  // the mobile menu's other action rows (see Header's "Settings" button) -- it also
-  // needs a wider panel since it no longer sits as a small button off to one side.
-  variant?: "icon" | "row";
-}) {
+// Modal content only -- no trigger, no open/close state of its own (same shape as
+// Settings). Header owns the open state and renders this inside a top-level
+// BottomSheet for both the desktop icon trigger and the mobile menu's row trigger.
+// Picking a destination scopes the whole app to it (?destination=, see AppShell) and
+// always lands you back on Map, even if you re-pick the one that's already active --
+// one consistent "tap a destination, see it on the map" action regardless of where you
+// started from.
+export function DestinationPicker({ onSelect }: { onSelect?: () => void }) {
   const { destinations, activeDestinationId, patchDestinationCache } = useRestaurantUI();
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [creating, setCreating] = useState(false);
 
-  const active = destinations.find((d) => d.id === activeDestinationId) ?? null;
-
-  function switchTo(id: string) {
+  function goTo(id: string) {
     const params = new URLSearchParams(searchParams.toString());
     params.set("destination", id);
+    params.delete("view");
     router.replace(`${pathname}?${params.toString()}`);
+    onSelect?.();
   }
 
   return (
     <>
-      {/* Keyed by the active id so picking a destination/finishing "create" remounts
-          the Dropdown closed, instead of needing an imperative close API from it. */}
-      <Dropdown
-        key={activeDestinationId ?? "none"}
-        panelClassName={variant === "row" ? "w-full" : "w-56"}
-        trigger={({ toggle }) =>
-          variant === "row" ? (
+      <div className="flex flex-col gap-1">
+        {destinations.map((d) => {
+          const isActive = d.id === activeDestinationId;
+          return (
             <button
-              onClick={toggle}
-              className="flex w-full items-center gap-2 rounded-md px-3 py-2.5 text-left text-black/60 hover:bg-black/[.03] dark:text-white/60 dark:hover:bg-white/[.05]"
+              key={d.id}
+              onClick={() => goTo(d.id)}
+              className={`flex items-center justify-between gap-2 rounded-md px-3 py-2.5 text-left text-sm ${
+                isActive
+                  ? "bg-black/[.04] font-medium text-red-500 dark:bg-white/[.08]"
+                  : "hover:bg-black/[.03] dark:hover:bg-white/[.05]"
+              }`}
             >
-              <MapPin size={16} />
-              <span className="flex-1 truncate">{active?.name ?? "Destination"}</span>
-              <CaretDown size={14} weight="bold" className="shrink-0 opacity-60" />
+              {d.name}
+              {isActive && <Check size={14} weight="bold" className="text-red-500" />}
             </button>
-          ) : (
-            <button
-              onClick={toggle}
-              aria-label={active?.name ?? "Destination"}
-              className="flex h-9 w-9 items-center justify-center rounded-lg border border-black/10 text-black/60 dark:border-white/10 dark:text-white/60"
-            >
-              <CaretDown size={14} weight="bold" />
-            </button>
-          )
-        }
-      >
-        <div className="flex flex-col gap-1">
-          {destinations.map((d) => {
-            const isActive = d.id === activeDestinationId;
-            return (
-              <button
-                key={d.id}
-                onClick={() => switchTo(d.id)}
-                className={`flex items-center justify-between gap-2 rounded-md px-2.5 py-1.5 text-left text-sm ${
-                  isActive
-                    ? "bg-black/[.04] font-medium text-red-500 dark:bg-white/[.08]"
-                    : "hover:bg-black/[.03] dark:hover:bg-white/[.05]"
-                }`}
-              >
-                {d.name}
-                {isActive && <Check size={14} weight="bold" className="text-red-500" />}
-              </button>
-            );
-          })}
-          <div className="mt-1 border-t border-black/10 pt-1 dark:border-white/10">
-            <button
-              onClick={() => {
-                beforeOpenCreate?.();
-                setCreating(true);
-              }}
-              className="w-full rounded-md px-2.5 py-1.5 text-left text-sm text-black/60 hover:bg-black/[.03] dark:text-white/60 dark:hover:bg-white/[.05]"
-            >
-              + New Destination
-            </button>
-          </div>
+          );
+        })}
+        <div className="mt-1 border-t border-black/10 pt-1 dark:border-white/10">
+          <button
+            onClick={() => setCreating(true)}
+            className="w-full rounded-md px-3 py-2.5 text-left text-sm text-black/60 hover:bg-black/[.03] dark:text-white/60 dark:hover:bg-white/[.05]"
+          >
+            + New Destination
+          </button>
         </div>
-      </Dropdown>
+      </div>
 
       <BottomSheet open={creating} onClose={() => setCreating(false)}>
         <NewDestinationForm
           onCreated={(d) => {
             patchDestinationCache(d);
-            switchTo(d.id);
             setCreating(false);
+            goTo(d.id);
           }}
           onCancel={() => setCreating(false)}
         />

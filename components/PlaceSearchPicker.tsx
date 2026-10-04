@@ -11,7 +11,7 @@ export interface PlacePickResult {
   lng: number | null;
 }
 
-// Shared "search Google Places, pick one result" step -- used by DestinationSwitcher's
+// Shared "search Google Places, pick one result" step -- used by DestinationPicker's
 // New Destination flow and DestinationSettings' location editor.
 export function PlaceSearchPicker({
   placeholder = "Search a place…",

@@ -3,13 +3,14 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Gear, List as ListIcon, Plus } from "@phosphor-icons/react";
+import { CaretDown, Gear, List as ListIcon, MapPin, Plus } from "@phosphor-icons/react";
 import { BottomSheet, ModalHeader } from "./BottomSheet";
 import { Logo } from "./Logo";
 import { LogoSmall } from "./LogoSmall";
 import { Settings } from "./Settings";
 import { MapSearchExpand, SearchField } from "./MapSearchExpand";
-import { DestinationSwitcher } from "./DestinationSwitcher";
+import { DestinationPicker } from "./DestinationPicker";
+import { useRestaurantUI } from "./AppShell";
 import { isViewName, type ViewName } from "@/lib/view";
 
 const TABS: { view: ViewName; label: string }[] = [
@@ -43,7 +44,9 @@ export function Header({ onAdd }: { onAdd: () => void }) {
   const viewParam = searchParams.get("view");
   const view: ViewName = isViewName(viewParam) ? viewParam : "map";
   const q = searchParams.get("q") ?? "";
+  const { activeDestination } = useRestaurantUI();
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [destinationOpen, setDestinationOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
 
   function handleSearch(value: string) {
@@ -104,7 +107,14 @@ export function Header({ onAdd }: { onAdd: () => void }) {
         <div className="flex items-center gap-4">
           <LogoSmall className="h-4 w-auto lg:hidden" />
           <Logo className="hidden h-4 w-auto lg:block" />
-          <DestinationSwitcher />
+          <button
+            onClick={() => setDestinationOpen(true)}
+            className="flex h-9 items-center gap-1.5 rounded-lg border border-black/10 px-2.5 text-sm text-black/70 dark:border-white/10 dark:text-white/70"
+          >
+            <MapPin size={14} />
+            <span className="max-w-[9rem] truncate">{activeDestination?.name ?? "Destination"}</span>
+            <CaretDown size={12} weight="bold" className="opacity-60" />
+          </button>
           <nav className="flex items-center gap-1 text-sm">
             {TABS.map((tab) => {
               const active = view === tab.view;
@@ -194,7 +204,17 @@ export function Header({ onAdd }: { onAdd: () => void }) {
             <Plus weight="bold" size={16} />
             Add Place
           </button>
-          <DestinationSwitcher variant="row" beforeOpenCreate={() => setMenuOpen(false)} />
+          <button
+            onClick={() => {
+              setMenuOpen(false);
+              setDestinationOpen(true);
+            }}
+            className="flex items-center gap-2 rounded-md px-3 py-2.5 text-left text-black/60 hover:bg-black/[.03] dark:text-white/60 dark:hover:bg-white/[.05]"
+          >
+            <MapPin size={16} />
+            <span className="flex-1 truncate">{activeDestination?.name ?? "Destination"}</span>
+            <CaretDown size={14} weight="bold" className="shrink-0 opacity-60" />
+          </button>
           <button
             onClick={() => {
               setMenuOpen(false);
@@ -225,6 +245,15 @@ export function Header({ onAdd }: { onAdd: () => void }) {
         <div className="flex min-h-0 flex-1 flex-col">
           <Settings />
         </div>
+      </BottomSheet>
+
+      <BottomSheet open={destinationOpen} onClose={() => setDestinationOpen(false)}>
+        <ModalHeader
+          title={<h2 className="text-lg">Destination</h2>}
+          onClose={() => setDestinationOpen(false)}
+          className="mb-4 pt-[env(safe-area-inset-top)] sm:pt-0"
+        />
+        <DestinationPicker onSelect={() => setDestinationOpen(false)} />
       </BottomSheet>
     </header>
   );

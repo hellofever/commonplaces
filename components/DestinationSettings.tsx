@@ -29,11 +29,11 @@ export function DestinationSettings() {
   }
 
   // Remounted whenever the active destination changes, so local drafts (the Name
-  // input) always start from that destination's own values -- same pattern as
-  // DestinationSwitcher's Dropdown key. Takes `destination` as a prop (rather than
-  // reading activeDestination again inside) so there's no window, right after a
-  // delete, where the cache has already dropped it but the URL hasn't caught up yet --
-  // this component only ever exists for a destination that's known to still be there.
+  // input) always start from that destination's own values. Takes `destination` as a
+  // prop (rather than reading activeDestination again inside) so there's no window,
+  // right after a delete, where the cache has already dropped it but the URL hasn't
+  // caught up yet -- this component only ever exists for a destination that's known to
+  // still be there.
   return <ActiveDestinationSettings key={activeDestination.id} destination={activeDestination} />;
 }
 
