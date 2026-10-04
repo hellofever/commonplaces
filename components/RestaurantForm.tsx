@@ -65,6 +65,12 @@ export function RestaurantForm({
   const inputClass =
     "rounded-lg border border-black/10 px-3 py-2 text-sm dark:border-white/10 dark:bg-white/5";
   const selectedTypeOptions = typeOptions.filter((t) => typeIds.includes(t.id));
+  const isReadyToSave =
+    name.trim() !== "" &&
+    typeIds.length > 0 &&
+    typeIds.length <= 3 &&
+    areaIds.length > 0 &&
+    !photoUpload.uploading;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -286,7 +292,7 @@ export function RestaurantForm({
       <div className="sticky bottom-0 z-10 bg-popover pt-3 pb-[calc(1.25rem+env(safe-area-inset-bottom))]">
         <button
           type="submit"
-          disabled={saving || photoUpload.uploading}
+          disabled={saving || photoUpload.uploading || !isReadyToSave}
           className="w-full rounded-full bg-red-500 py-2.5 font-heading text-sm uppercase text-white disabled:opacity-50"
         >
           {photoUpload.uploading ? "Uploading photos…" : saving ? "Saving…" : submitLabel}

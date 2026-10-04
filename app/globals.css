@@ -108,6 +108,16 @@
   --type-blue-tag: #00486c;
   --type-purple-map: #5b4d9a;
   --type-purple-tag: #3a3067;
+  --type-lime-map: #a8c93f;
+  --type-lime-tag: #7a9426;
+  --type-indigo-map: #5560d1;
+  --type-indigo-tag: #373f98;
+  --type-magenta-map: #d62ec0;
+  --type-magenta-tag: #961986;
+  --type-brown-map: #b97340;
+  --type-brown-tag: #7d4a24;
+  --type-slate-map: #6c7f92;
+  --type-slate-tag: #46535f;
 }
 
 .dark {
@@ -155,6 +165,11 @@
   --type-cyan-tag: #6dcdca;
   --type-blue-tag: #34b6f7;
   --type-purple-tag: #988fc4;
+  --type-lime-tag: #c7e076;
+  --type-indigo-tag: #9ea6e3;
+  --type-magenta-tag: #e98bdc;
+  --type-brown-tag: #d9a876;
+  --type-slate-tag: #aab7c6;
 }
 
 @layer base {

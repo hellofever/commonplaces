@@ -5,12 +5,13 @@ import { createPortal } from "react-dom";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeft, MagnifyingGlass, X } from "@phosphor-icons/react";
 import { matchesQuery } from "@/lib/search";
+import { useMapFilterParams, type MapFilterKind } from "@/lib/mapFilters";
 import { TagPicker } from "@/components/TagPicker";
 import { RestaurantCardContent } from "@/components/RestaurantCardContent";
 import { useRestaurantUI } from "@/components/AppShell";
 import type { Restaurant } from "@/lib/types";
 
-type FilterKind = "types" | "tags" | "areas";
+type FilterKind = MapFilterKind;
 interface SelectedChip {
   id: string;
   name: string;
@@ -95,6 +96,7 @@ export function MapSearchExpand() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { types, tags, areas, restaurants } = useRestaurantUI();
+  const { typeIds, tagIds, areaIds, updateIds } = useMapFilterParams();
   const [value, setValue] = useState("");
   const [expanded, setExpanded] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -113,10 +115,6 @@ export function MapSearchExpand() {
     mq.addEventListener("change", update);
     return () => mq.removeEventListener("change", update);
   }, []);
-
-  const typeIds = (searchParams.get("mapTypes") ?? "").split(",").filter(Boolean);
-  const tagIds = (searchParams.get("mapTags") ?? "").split(",").filter(Boolean);
-  const areaIds = (searchParams.get("mapAreas") ?? "").split(",").filter(Boolean);
 
   function open() {
     setExpanded(true);
@@ -161,25 +159,6 @@ export function MapSearchExpand() {
       document.removeEventListener("click", handleClick);
     };
   }, [expanded]);
-
-  // Prefixed "map"-, distinct from List/Sheet's own ?types=/?tags=/?areas= -- all three
-  // views now share one route/query-string (see app/page.tsx), and Map's filter
-  // selection is deliberately independent of List's/Sheet's, same as before when they
-  // were separate routes.
-  const FILTER_PARAM_KEYS: Record<FilterKind, string> = {
-    types: "mapTypes",
-    tags: "mapTags",
-    areas: "mapAreas",
-  };
-
-  function updateIds(key: FilterKind, ids: string[]) {
-    const paramKey = FILTER_PARAM_KEYS[key];
-    const params = new URLSearchParams(searchParams.toString());
-    if (ids.length > 0) params.set(paramKey, ids.join(","));
-    else params.delete(paramKey);
-    const qs = params.toString();
-    router.replace(qs ? `/?${qs}` : "/");
-  }
 
   function removeChip(kind: FilterKind, id: string) {
     if (kind === "types") updateIds("types", typeIds.filter((x) => x !== id));

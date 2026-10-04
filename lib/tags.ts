@@ -143,6 +143,11 @@ export const TAG_ICONS = [
   "Martini",
   "Popcorn",
   "BowlSteam",
+  "Storefront",
+  "ShoppingBag",
+  "ShoppingCart",
+  "CurrencyDollar",
+  "Coins",
 ] as const;
 
 export type TagIconName = (typeof TAG_ICONS)[number];
