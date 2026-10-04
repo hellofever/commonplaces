@@ -44,3 +44,17 @@ export function useClusteringEnabled(): [boolean, (next: boolean) => void] {
   const enabled = useSyncExternalStore(subscribe, getClusteringSnapshot, getClusteringServerSnapshot);
   return [enabled, setClusteringEnabled];
 }
+
+// Last-active destination id, so a fresh sign-in/load lands back where you left off
+// instead of always defaulting to the oldest destination. Plain get/set (no
+// useSyncExternalStore hook) -- AppShell is the only consumer, and only to seed/persist
+// activeDestinationId, nothing here needs to re-render on change.
+const LAST_DESTINATION_KEY = "commonplaces:last-destination-id";
+
+export function getLastDestinationId(): string | null {
+  return window.localStorage.getItem(LAST_DESTINATION_KEY);
+}
+
+export function setLastDestinationId(id: string) {
+  window.localStorage.setItem(LAST_DESTINATION_KEY, id);
+}

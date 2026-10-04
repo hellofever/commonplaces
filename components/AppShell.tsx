@@ -7,6 +7,7 @@ import { supabase } from "@/lib/supabase";
 import { fetchRestaurants } from "@/lib/restaurants";
 import { fetchTags, type Tag, type TagKind } from "@/lib/tags";
 import { fetchDestinations, type Destination } from "@/lib/destinations";
+import { getLastDestinationId, setLastDestinationId } from "@/lib/preferences";
 import type { Restaurant } from "@/lib/types";
 import { Header } from "./Header";
 import { BottomSheet } from "./BottomSheet";
@@ -154,7 +155,16 @@ function AuthenticatedShell({ children }: { children: React.ReactNode }) {
   const [initialLoadDone, setInitialLoadDone] = useState(false);
 
   const destinationParam = searchParams.get("destination");
-  const activeDestinationId = destinationParam ?? destinations[0]?.id ?? null;
+  // Falls back to the last destination this device was on (see the persist effect
+  // below), not always the oldest one -- but only if that id still refers to a
+  // destination that actually exists (it may have been deleted since, or this may be
+  // the first-ever load with nothing saved yet).
+  const lastDestinationId = getLastDestinationId();
+  const fallbackDestinationId =
+    (lastDestinationId && destinations.some((d) => d.id === lastDestinationId)
+      ? lastDestinationId
+      : destinations[0]?.id) ?? null;
+  const activeDestinationId = destinationParam ?? fallbackDestinationId;
   const activeDestination = destinations.find((d) => d.id === activeDestinationId) ?? null;
 
   // Per-destination restaurant cache, so switching back to a destination already
@@ -173,6 +183,14 @@ function AuthenticatedShell({ children }: { children: React.ReactNode }) {
   const activeDestinationIdRef = useRef(activeDestinationId);
   useEffect(() => {
     activeDestinationIdRef.current = activeDestinationId;
+  }, [activeDestinationId]);
+
+  // Remember this destination as the one to land on next time (next tab switch,
+  // reload, or sign-in on this device) -- runs for every change, including the
+  // canonicalization effect's own first write, so it stays current even if the
+  // previously-remembered destination was deleted out from under it.
+  useEffect(() => {
+    if (activeDestinationId) setLastDestinationId(activeDestinationId);
   }, [activeDestinationId]);
 
   async function syncRestaurants(destinationId: string | null = activeDestinationId) {

@@ -5,6 +5,7 @@ export type SortKey =
   | "name-asc"
   | "name-desc"
   | "created-desc"
+  | "updated-desc"
   | "price-asc"
   | "price-desc"
   | "favourites-first";
@@ -15,6 +16,7 @@ export const SORT_OPTIONS: { value: SortKey; label: string }[] = [
   { value: "name-asc", label: "Name (A–Z)" },
   { value: "name-desc", label: "Name (Z–A)" },
   { value: "created-desc", label: "Recently added" },
+  { value: "updated-desc", label: "Recently edited" },
   { value: "price-asc", label: "Price (low to high)" },
   { value: "price-desc", label: "Price (high to low)" },
   { value: "favourites-first", label: "Favourites first" },
@@ -36,6 +38,10 @@ export function sortRestaurants(list: Restaurant[], sort: SortKey): Restaurant[]
     case "created-desc":
       return sorted.sort(
         (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      );
+    case "updated-desc":
+      return sorted.sort(
+        (a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
       );
     case "price-asc":
       return sorted.sort((a, b) => (a.price_level ?? Infinity) - (b.price_level ?? Infinity));
