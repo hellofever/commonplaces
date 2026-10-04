@@ -195,7 +195,12 @@ export function MapSearchExpand() {
             onKeyDown={(e) => {
               if (e.key === "Enter" || e.key === " ") goToResult(r);
             }}
-            className="cursor-pointer rounded-lg px-1 py-3 first:pt-0 last:pb-0 hover:bg-black/[.03] dark:hover:bg-white/[.05]"
+            // select-none: this row's own text (name/address) is otherwise selectable --
+            // on iOS Safari a tap landing on selectable text is frequently read as a
+            // text-selection gesture instead of a tap, which suppresses the synthesized
+            // click entirely, so the row visually highlights text but goToResult never
+            // fires.
+            className="cursor-pointer select-none rounded-lg px-1 py-3 first:pt-0 last:pb-0 hover:bg-black/[.03] dark:hover:bg-white/[.05]"
           >
             <RestaurantCardContent restaurant={r} showActions={false} />
           </div>
