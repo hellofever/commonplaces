@@ -198,12 +198,19 @@
     overscroll-behavior: none;
   }
 
-  /* iOS Safari auto-zooms the page on focus for any text input/textarea/select whose
-     computed font-size is under 16px -- every form control in this app uses text-sm
-     (14px), so bump to 16px on mobile widths only, where the zoom actually happens. */
-  @media (max-width: 767px) {
-    input, textarea, select {
-      font-size: 16px;
-    }
+}
+
+/* iOS Safari auto-zooms the page on focus for any text input/textarea/select whose
+   computed font-size is under 16px -- every form control in this app uses text-sm
+   (14px), so bump to 16px on mobile widths only, where the zoom actually happens.
+   Deliberately unlayered (not inside @layer base above): Tailwind's utility classes
+   (including text-sm itself) live in a later cascade layer than @layer base, and a
+   later layer always wins over an earlier one regardless of selector specificity --
+   so this rule was previously inside @layer base and silently never applied, since
+   every input's text-sm class outranked it. Unlayered CSS always beats layered CSS,
+   which is what actually makes this override stick. */
+@media (max-width: 767px) {
+  input, textarea, select {
+    font-size: 16px;
   }
 }
