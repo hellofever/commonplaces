@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Trash } from "@phosphor-icons/react";
 import {
   AlertDialog,
@@ -38,10 +37,8 @@ export function DestinationSettings() {
 }
 
 function ActiveDestinationSettings({ destination }: { destination: Destination }) {
-  const { destinations, restaurants, patchDestinationCache, removeDestinationFromCache } = useRestaurantUI();
-  const router = useRouter();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
+  const { destinations, restaurants, patchDestinationCache, removeDestinationFromCache, switchDestination } =
+    useRestaurantUI();
   const { run, isPending, isError } = useOptimisticSave();
 
   const [name, setName] = useState(destination.name);
@@ -114,10 +111,7 @@ function ActiveDestinationSettings({ destination }: { destination: Destination }
       onSuccess: () => {
         removeDestinationFromCache(destination.id);
         const remaining = destinations.filter((d) => d.id !== destination.id);
-        const params = new URLSearchParams(searchParams.toString());
-        if (remaining[0]) params.set("destination", remaining[0].id);
-        else params.delete("destination");
-        router.replace(`${pathname}?${params.toString()}`);
+        switchDestination(remaining[0]?.id ?? null);
         setConfirmingDelete(false);
       },
     });

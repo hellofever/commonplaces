@@ -44,18 +44,20 @@ interface RestaurantUIContextValue {
 
   // Destinations scope the whole app -- restaurants are fetched filtered to
   // activeDestinationId (see fetchRestaurants), not client-side. activeDestinationId
-  // is driven by the ?destination= URL param (see the effects below), so it stays
-  // shareable and survives reloads/navigation the same way ?q=/?tags= do.
+  // is real state set directly by switchDestination (see below), with the ?destination=
+  // URL param kept in sync as a best-effort side effect for shareability/reload-safety
+  // -- it's not the source of truth, since Next's router.replace has been observed to
+  // silently no-op on some iOS Safari sessions.
   destinations: Destination[];
   activeDestinationId: string | null;
   activeDestination: Destination | null;
   destinationsError: boolean;
-  // True from the moment DestinationPicker commits to a different id until that
+  // True from the moment switchDestination commits to a different id until that
   // destination's restaurants/tags finish loading (see the effect below) -- drives the
   // full-screen loading overlay so a switch never shows a flash of the previous
   // destination's pins/empty state while the new one's fetch is in flight.
   destinationSwitching: boolean;
-  beginDestinationSwitch: () => void;
+  switchDestination: (id: string | null) => void;
 
   // Force a full refetch of a domain -- used by Settings' "Sync now" button and by
   // Realtime event handlers. Falls back to serving stale cached data on failure.
@@ -184,8 +186,26 @@ function AuthenticatedShell({ children }: { children: React.ReactNode }) {
     (lastDestinationId && destinations.some((d) => d.id === lastDestinationId)
       ? lastDestinationId
       : destinations[0]?.id) ?? null;
-  const activeDestinationId = destinationParam ?? fallbackDestinationId;
+  // Real state, not derived from the URL every render -- switchDestination (below)
+  // sets this directly so a switch can never get stuck on a URL update that silently
+  // fails to commit. Observed directly on an iOS Safari session: raw
+  // history.replaceState works fine, but Next's router.replace no-ops after a fresh
+  // page load until some unrelated history mutation "wakes" the router back up --
+  // after which it works again until the next reload. Rather than chase that, the app
+  // no longer depends on the URL update succeeding at all.
+  const [activeDestinationId, setActiveDestinationId] = useState<string | null>(null);
   const activeDestination = destinations.find((d) => d.id === activeDestinationId) ?? null;
+
+  // Resolve the initial destination once, the first time destinations/URL/localStorage
+  // give us something to work with -- mirrors the old URL-param-then-last-used-then-
+  // oldest fallback chain, but only runs while nothing's been picked yet this session.
+  useEffect(() => {
+    if (activeDestinationId || !destinationsAndTypesLoaded) return;
+    const initial = destinationParam ?? fallbackDestinationId;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (initial) setActiveDestinationId(initial);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeDestinationId, destinationsAndTypesLoaded, destinationParam, fallbackDestinationId]);
 
   // Per-destination restaurant cache, so switching back to a destination already
   // visited this session renders instantly from cache instead of waiting on a fresh
@@ -322,8 +342,10 @@ function AuthenticatedShell({ children }: { children: React.ReactNode }) {
     setDestinations((prev) => prev.filter((d) => d.id !== id));
   }
 
-  function beginDestinationSwitch() {
-    setDestinationSwitching(true);
+  function switchDestination(id: string | null) {
+    if (id === activeDestinationId) return;
+    if (id) setDestinationSwitching(true);
+    setActiveDestinationId(id);
   }
 
   useEffect(() => {
@@ -331,16 +353,16 @@ function AuthenticatedShell({ children }: { children: React.ReactNode }) {
     Promise.all([syncDestinations(), syncTypes()]).finally(() => setDestinationsAndTypesLoaded(true));
   }, []);
 
-  // Canonicalize the URL once destinations are loaded and none was specified, so the
-  // active destination is always shareable/reload-safe -- same pattern Header uses for
-  // ?q=, just written once here instead of per-navigation.
+  // Keep the URL's ?destination= in sync with activeDestinationId so it stays
+  // shareable/reload-safe -- best-effort only (see activeDestinationId above), nothing
+  // else depends on this actually committing.
   useEffect(() => {
-    if (!destinationsAndTypesLoaded || destinationParam || !activeDestinationId) return;
+    if (!activeDestinationId || destinationParam === activeDestinationId) return;
     const params = new URLSearchParams(searchParams.toString());
     params.set("destination", activeDestinationId);
     router.replace(`${pathname}?${params.toString()}`);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [destinationsAndTypesLoaded, destinationParam, activeDestinationId]);
+  }, [activeDestinationId, destinationParam]);
 
   useEffect(() => {
     if (!destinationsAndTypesLoaded || !activeDestinationId) return;
@@ -406,7 +428,7 @@ function AuthenticatedShell({ children }: { children: React.ReactNode }) {
         activeDestination,
         destinationsError,
         destinationSwitching,
-        beginDestinationSwitch,
+        switchDestination,
         syncNow,
         syncRestaurants,
         syncTags,

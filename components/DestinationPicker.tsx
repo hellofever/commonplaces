@@ -16,20 +16,23 @@ import { createDestination, type Destination } from "@/lib/destinations";
 // one consistent "tap a destination, see it on the map" action regardless of where you
 // started from.
 export function DestinationPicker({ onSelect }: { onSelect?: () => void }) {
-  const { destinations, activeDestinationId, patchDestinationCache, beginDestinationSwitch } = useRestaurantUI();
+  const { destinations, activeDestinationId, patchDestinationCache, switchDestination } = useRestaurantUI();
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [creating, setCreating] = useState(false);
 
   function goTo(id: string) {
-    // Only when it's an actual change -- picking the already-active destination
-    // doesn't re-trigger AppShell's fetch effect, so the overlay would never clear.
-    if (id !== activeDestinationId) beginDestinationSwitch();
-    const params = new URLSearchParams(searchParams.toString());
-    params.set("destination", id);
-    params.delete("view");
-    router.replace(`${pathname}?${params.toString()}`);
+    // switchDestination updates state directly (not just the URL), so the switch
+    // itself can't get stuck even if this router.replace below silently fails to
+    // commit -- see AppShell's activeDestinationId comment. This replace is just for
+    // dropping the ?view= param, so re-picking a destination always lands on Map.
+    switchDestination(id);
+    if (searchParams.get("view")) {
+      const params = new URLSearchParams(searchParams.toString());
+      params.delete("view");
+      router.replace(`${pathname}?${params.toString()}`);
+    }
     onSelect?.();
   }
 
