@@ -18,7 +18,7 @@ export function BottomSheet({
   side = "bottom",
   widthClassName = "sm:max-w-md",
   heightClassName = "max-h-[85vh] sm:h-fit!",
-  paddingClassName = "p-5",
+  paddingClassName = "p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))]",
   radiusClassName = "rounded-t-2xl sm:rounded-2xl",
 }: {
   open: boolean;
@@ -29,7 +29,11 @@ export function BottomSheet({
   heightClassName?: string;
   // Vertical padding is 0 for content that manages its own sticky top/bottom bars
   // (e.g. AddRestaurantFlow's header/footer) -- otherwise the sheet's own padding
-  // leaves a gap those bars can't stick flush against.
+  // leaves a gap those bars can't stick flush against. The default's bottom padding
+  // stacks env(safe-area-inset-bottom) on top of the usual 1.25rem -- on an iOS
+  // "Add to Home Screen" install (true fullscreen, unlike a Safari tab) the last row
+  // in a plain p-5 sheet sits inside the home-indicator swipe zone and its taps get
+  // intermittently swallowed by the system gesture, not the page.
   paddingClassName?: string;
   radiusClassName?: string;
 }) {
